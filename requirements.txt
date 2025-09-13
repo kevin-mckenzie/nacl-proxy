@@ -1,0 +1,10 @@
+pip-tools
+cmake
+clang-tidy
+clang-format
+cmake-format
+lizard
+yamllint
+invoke==2.2.0
+pytest
+black

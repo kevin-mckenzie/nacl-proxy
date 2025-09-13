@@ -1,0 +1,16 @@
+Checks: 
+ - "*"
+ - -clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling
+ - -llvmlibc-restrict-system-libc-headers
+ - -readability-identifier-length
+ - -altera-unroll-loops
+ - -altera-id-dependent-backward-branch
+ - -bugprone-easily-swappable-parameters
+ - -altera-struct-pack-align
+ - -google-readability-todo
+ - -clang-diagnostic-declaration-after-statement
+ - -clang-diagnostic-unsafe-buffer-usage
+FormatStyle: file
+CheckOptions:
+  - key: readability-function-cognitive-complexity.IgnoreMacros
+    value: 'true'
