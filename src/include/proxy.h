@@ -1,8 +1,7 @@
 #ifndef PROXY_H
 #define PROXY_H
 
-typedef struct
-{
+typedef struct {
     char *server_addr;
     char *server_port;
     char *bind_addr;

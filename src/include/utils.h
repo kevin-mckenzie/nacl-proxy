@@ -21,7 +21,7 @@ enum Base {
 #define DEBUG_PERROR(msg)
 #endif
 
-#define ASSERT_RET(condition)                                                                                              \
+#define ASSERT_RET(condition)                                                                                          \
     do {                                                                                                               \
         if (!(condition)) {                                                                                            \
             assert(condition);                                                                                         \

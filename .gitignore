@@ -4,3 +4,6 @@ build-*
 .pycache*
 dist
 .venv
+.ruff_cache
+__pycache__
+.pytest_cache

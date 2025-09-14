@@ -1,8 +1,15 @@
 set(TARGET proxy-${BUILD_NAME})
 
 include_directories(include)
-add_executable(${TARGET} main.c buf.c event.c network.c proxy.c netnacl.c tweetnacl.c)
-set_source_files_properties(tweetnacl.c PROPERTIES SKIP_LINTING ON)
+add_executable(
+  ${TARGET}
+  main.c
+  buf.c
+  event.c
+  network.c
+  proxy.c
+  netnacl.c
+  tweetnacl.c)
 target_compile_options(${TARGET} PRIVATE -Wall -Wpedantic -Werror)
 
 target_compile_definitions(${TARGET} PRIVATE _POSIX_C_SOURCE=200809L)
@@ -27,8 +34,8 @@ if(${CMAKE_BUILD_TYPE} STREQUAL "Debug")
 endif()
 
 if(${CMAKE_BUILD_TYPE} STREQUAL "MinSizeRel")
-  target_compile_options(${TARGET} PRIVATE -O3 -ffunction-sections
-                                           -fdata-sections -march=native)
+  target_compile_options(${TARGET} PRIVATE -Os -ffunction-sections
+                                           -fdata-sections)
   target_link_options(${TARGET} PRIVATE -s -Wl,--gc-sections)
 endif()
 

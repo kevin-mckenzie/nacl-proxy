@@ -5,6 +5,7 @@ clang-format
 cmake-format
 lizard
 yamllint
-invoke==2.2.0
+invoke
 pytest
-black
+ruff
+codechecker

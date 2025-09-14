@@ -3,15 +3,19 @@ FROM ubuntu:24.04
 RUN apt update && apt upgrade -y && \
     apt install -y --no-install-recommends \
         build-essential \
+        apt-utils \
         python3 \
         python3-pip \
         python3-venv \
+        python3-dev \
         ninja-build \
         qemu-user-static \
         curl \
         wget \
         valgrind \
-        cpcheck \
+        clang \
+        clang-tools \
+        cppcheck && \
     apt clean && \
     rm -rf /var/lib/apt/lists/*
 

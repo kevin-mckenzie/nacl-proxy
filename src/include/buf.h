@@ -1,9 +1,9 @@
 #ifndef BUF_H
 #define BUF_H
 
+#include <network.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <network.h>
 
 enum {
     BUF_SIZ = 16348UL,
