@@ -15,7 +15,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: lint
-      - run: inv lint
+        run: inv lint
 
   build-analyze-test:
     runs-on: ubuntu-latest
