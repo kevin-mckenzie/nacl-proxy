@@ -76,6 +76,8 @@ jobs:
 
       - name: download 
         uses: actions/download-artifact@v4
+        with:
+          path: dist/bin
 
       - name: compress
         run: |
