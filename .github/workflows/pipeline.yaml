@@ -1,0 +1,48 @@
+name: Multi-Arch-CI
+
+on:
+  push:
+    branches: [ $default-branch ]
+  pull:
+    branches: [ $default-branch ]
+
+jobs:
+  build:
+    runs-on: ghcr.io/kevin-mckenzie/n-proxy:latest
+
+    strategy:
+      matrix:
+        target: [local, valgrind, asan, linux-x86_64-musl]
+        build_type: [release, debug]
+        exclude:
+          - target: valgrind
+            build_type: release
+          - target: asan
+            build_type: release
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: build-${{ matrix.target }}-${{ matrix.build_type }}
+        run: |
+          if [ "${{ matrix.build_type }}" = "release" ]; then
+            inv build --target ${{ matrix.target }} --release
+          else
+            inv build --target ${{ matrix.target }}
+          fi
+
+      - name: analyze-${{ matrix.target }}-${{ matrix.build_type }}
+        run: |
+          if [ "${{ matrix.build_type }}" = "release" ]; then
+            inv analyze --target ${{ matrix.target }} --release
+          else
+            inv analyze --target ${{ matrix.target }}
+          fi
+
+      - name: test-${{ matrix.target }}-${{ matrix.build_type }}
+        run: |
+          if [ "${{ matrix.build_type }}" = "release" ]; then
+            inv test --target ${{ matrix.target }} --release
+          else
+            inv test --target ${{ matrix.target }}
+          fi
