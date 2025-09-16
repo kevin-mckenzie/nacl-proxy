@@ -37,7 +37,11 @@ def single_unencrypted_proxy_fs(request):
         out_addr="127.0.0.1",
         out_port=8000,
     )
-    time.sleep(0.2)
+    if "valgrind" in proc_args_list:
+        time.sleep(1)
+    else:
+        time.sleep(0.2)
+
     yield proxy
 
     proxy.proc.terminate()

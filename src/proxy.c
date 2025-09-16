@@ -302,7 +302,7 @@ static int handle_send(conn_t *p_conn, enum ProxySide side) {
         return PROXY_SUCCESS;
     }
 
-    LOG(WRN, "Closing both ends of connection to to send error");
+    LOG(WRN, "Closing both ends of connection due to send error");
     close_connection(&p_conn);
     return err;
 }
