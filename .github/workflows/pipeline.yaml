@@ -62,8 +62,8 @@ jobs:
       - name: upload
         uses: actions/upload-artifact@v4
         with:
-          name: dist
-          path: dist
+          name: ${{ matrix.target }}-${{ matrix.build_type }}
+          path: dist/bin/*
 
   package:
     needs: build-analyze-test
@@ -76,14 +76,14 @@ jobs:
 
       - name: download 
         uses: actions/download-artifact@v4
-        with:
-          name: dist
 
       - name: compress
-        run: tar cf n-proxy.tar.gz dist/bin
+        run: |
+          ls -la
+          tar cf n-proxy.tar.gz dist/bin
 
-      - name: upload
-        uses: actions/upload-artifact@v4
-        with:
-          name: n-proxy.tar.gz
-          path: n-proxy.tar.gz
+      # - name: upload
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: n-proxy.tar.gz
+      #     path: n-proxy.tar.gz
