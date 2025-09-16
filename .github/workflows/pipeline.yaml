@@ -11,8 +11,11 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/kevin-mckenzie/n-proxy:latest
+
     steps:
-      inv lint
+      - uses: actions/checkout@v4
+      - name: lint
+      - run: inv lint
 
   build-analyze-test:
     runs-on: ubuntu-latest
@@ -63,6 +66,7 @@ jobs:
           path: dist
 
   package:
+    needs: build-analyze-test
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/kevin-mckenzie/n-proxy:latest
