@@ -82,7 +82,7 @@ def analyze(
                 -o dist/reports/analysis/{build_dir}/out"
     )
     ctx.run(
-        f"CodeChecker parse  dist/reports/analysis/{build_dir}/out -o dist/reports/analysis/{build_dir}/report -e html"
+        f"CodeChecker parse dist/reports/analysis/{build_dir}/out -o dist/reports/analysis/{build_dir}/report -e html"
     )
     ctx.run(f"rm -fdr dist/reports/analysis/{build_dir}/out")
 
@@ -138,7 +138,7 @@ def test(
         raise invoke.Exit(
             f"Invalid target: {target} must be one of {list(TARGETS.keys())}"
         )
-    
+
     linking = TARGETS[target].get("linking", "static")
     build_type = "MinSizeRel" if release else "Debug"
     build_name = f"{target}-{linking}-{build_type.lower()}"
@@ -147,7 +147,7 @@ def test(
     emulator = TARGETS[target].get("emulator", "")
 
     print(f'PYTHON_PATH=test pytest . --bin_path={bin_path} --emulator={emulator}')
-    ctx.run(f'PYTHON_PATH=test pytest . --bin_path={bin_path} --emulator=\'{emulator}\' -k={k}')
+    ctx.run(f'PYTHON_PATH=test pytest . --bin_path={bin_path} --emulator=\'{emulator}\' -k={k} -s')
 
 
 

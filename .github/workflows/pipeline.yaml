@@ -7,7 +7,14 @@ on:
     branches: [ main ]
 
 jobs:
-  build:
+  lint:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/kevin-mckenzie/n-proxy:latest
+    steps:
+      inv lint
+
+  build-analyze-test:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/kevin-mckenzie/n-proxy:latest
@@ -48,3 +55,31 @@ jobs:
           else
             inv test --target ${{ matrix.target }}
           fi
+
+      - name: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+  package:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/kevin-mckenzie/n-proxy:latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: download 
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+
+      - name: compress
+        run: tar cf n-proxy.tar.gz dist/bin
+
+      - name: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: n-proxy.tar.gz
+          path: n-proxy.tar.gz
