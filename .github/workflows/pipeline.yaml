@@ -3,7 +3,7 @@ name: Multi-Arch-CI
 on:
   push:
     branches: [ $default-branch ]
-  pull:
+  pull_request:
     branches: [ $default-branch ]
 
 jobs:
