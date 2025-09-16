@@ -30,7 +30,7 @@ static void print_usage(const char *prog_name) {
 }
 
 static int parse_args(config_t *p_config, int argc, char *argv[]) {
-    ASSERT_RET(NULL != p_config);
+    ASSERT_RET(NULL != p_config); // NOLINT (misc-include-cleaner)
     ASSERT_RET(NULL != argv);
 
     int opt = 0;

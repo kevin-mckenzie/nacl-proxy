@@ -41,7 +41,7 @@ static int handle_send(conn_t *p_conn, enum ProxySide side);
 static void close_connection(conn_t **pp_conn);
 
 int proxy_run(config_t *p_config) {
-    ASSERT_RET(NULL != p_config);
+    ASSERT_RET(NULL != p_config); // NOLINT (misc-include-cleaner)
 
     int err = 0;
     bool b_event_added = false;
@@ -226,9 +226,7 @@ static int handle_recv(conn_t *p_conn, enum ProxySide side) {
         p_net = &p_conn->client;
         mod_fd = p_conn->server.sock_fd;
         p_buf = &p_conn->server_send_buf;
-    }
-
-    if (SERVER == side) {
+    } else { // SERVER == side
         p_net = &p_conn->server;
         mod_fd = p_conn->client.sock_fd;
         p_buf = &p_conn->client_send_buf;
@@ -283,9 +281,7 @@ static int handle_send(conn_t *p_conn, enum ProxySide side) {
         p_conn_net = &p_conn->client;
         p_mod_net = &p_conn->server;
         p_buf = &p_conn->client_send_buf;
-    }
-
-    if (SERVER == side) {
+    } else { // SERVER == side
         p_conn_net = &p_conn->server;
         p_mod_net = &p_conn->client;
         p_buf = &p_conn->server_send_buf;

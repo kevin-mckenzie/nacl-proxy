@@ -7,7 +7,7 @@
 #include <string.h>
 #include <sys/random.h>
 #include <sys/socket.h>
-#include <sys/types.h>
+#include <sys/types.h> // NOLINT (misc-include-cleaner)
 #include <unistd.h>
 
 #ifdef __GLIBC__
@@ -95,7 +95,7 @@ READ_DEV_URANDOM:
 
 // TODO: make this non-blocking too
 int netnacl_wrap(int sock_fd, netnacl_t **pp_nn) {
-    ASSERT_RET(NULL == *pp_nn);
+    ASSERT_RET(NULL == *pp_nn); // NOLINT (misc-include-cleaner)
     ASSERT_RET(-1 < sock_fd);
 
     uint8_t peer_pk[crypto_box_PUBLICKEYBYTES] = {0};

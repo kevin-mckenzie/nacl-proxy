@@ -2,7 +2,7 @@
 #include <errno.h>
 #include <stddef.h>
 #include <sys/socket.h>
-#include <sys/types.h>
+#include <sys/types.h> // NOLINT (misc-include-cleaner)
 
 #ifdef __GLIBC__
 #include <asm-generic/errno-base.h>
@@ -17,7 +17,7 @@
 #include "utils.h"
 
 int buf_send(net_t *p_net, buf_t *p_buf, int flags) {
-    ASSERT_RET(NULL != p_net);
+    ASSERT_RET(NULL != p_net); // NOLINT (misc-include-cleaner)
     ASSERT_RET(p_buf->size != 0);
     ASSERT_RET(p_buf->read_pos != p_buf->size);
 
