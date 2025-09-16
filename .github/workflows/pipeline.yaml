@@ -10,7 +10,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     container:
-      - image: ghcr.io/kevin-mckenzie/n-proxy:latest
+      image: ghcr.io/kevin-mckenzie/n-proxy:latest
 
     strategy:
       matrix:
