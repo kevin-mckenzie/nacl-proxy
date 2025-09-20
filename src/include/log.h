@@ -7,6 +7,7 @@
 #include <pthread.h>
 #include <stdio.h>
 #include <time.h>
+#include <unistd.h>
 
 enum log_lvl {
     TRC = 0,
@@ -17,7 +18,7 @@ enum log_lvl {
     ERR
 };
 
-#define LOG_LVL ERR
+#define LOG_LVL WRN
 
 #define COLOR_RESET "\x1b[0m"   /**< ANSI Reset */
 #define COLOR_RED "\x1b[31m"    /**< ANSI Red */
@@ -64,8 +65,8 @@ enum log_lvl {
                 color = COLOR_RESET;                                                                                   \
                 break;                                                                                                 \
             }                                                                                                          \
-            (void)fprintf(stderr, "%ld.%09ld [%s%5s%s] %s():%d: ", now.tv_sec, now.tv_nsec, color, lvl_str,            \
-                          COLOR_RESET, __func__, __LINE__);                                                            \
+            (void)fprintf(stderr, "%ld.%09ld [%s%5s%s] %d:%s():%d: ", now.tv_sec, now.tv_nsec, color, lvl_str,         \
+                          COLOR_RESET, getpid(), __func__, __LINE__);                                                  \
             if (0 != errno) {                                                                                          \
                 (void)fprintf(stderr, "(errno:%d): " fmt "\n", errno, ##__VA_ARGS__) /*NOLINT*/;                       \
             } else {                                                                                                   \

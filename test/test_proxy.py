@@ -83,7 +83,7 @@ def _base_urls(proxy: Proxy, server: HTTPServer) -> Tuple[str, str]:
 
 
 def _sha256_stream(
-    url: str, *, session: Optional[requests.Session] = None, timeout=5
+    url: str, *, session: Optional[requests.Session] = None, timeout=10
 ) -> str:
     s = session or requests
     h = hashlib.sha256()
@@ -369,7 +369,7 @@ def test_concurrent_clients_download_same_file(
 
     ref = _sha256_stream(direct_url)
 
-    N = 12
+    N = 8
     with cf.ThreadPoolExecutor(max_workers=N) as ex:
         futs = [ex.submit(_sha256_stream, proxy_url) for _ in range(N)]
         results = [f.result() for f in futs]

@@ -194,8 +194,8 @@ ssize_t netnacl_send(netnacl_t *p_nn, const uint8_t *buf, size_t len, int flags)
 static int recv_hdr(netnacl_t *p_nn, int flags) {
 
     while (p_nn->hdr_bytes_recvd < sizeof(hdr_t)) {
-        ssize_t recvd =
-            recv(p_nn->sock_fd, &p_nn->recv_hdr + p_nn->hdr_bytes_recvd, sizeof(hdr_t) - p_nn->hdr_bytes_recvd, flags);
+        ssize_t recvd = recv(p_nn->sock_fd, (uint8_t *)&p_nn->recv_hdr + p_nn->hdr_bytes_recvd,
+                             sizeof(hdr_t) - p_nn->hdr_bytes_recvd, flags);
 
         if (-1 == recvd) {
             if ((EAGAIN == errno) || (EWOULDBLOCK == errno)) {
@@ -290,10 +290,9 @@ static void encrypt_plaintext(netnacl_t *p_nn, const uint8_t *buf, size_t len) {
     hdr_t send_hdr = {0};
     uint8_t pt_buf[crypto_box_ZEROBYTES + MAX_MESSAGE_LEN] = {0};
 
-    LOG(DBG, "encrypting %zu bytes of plaintext", len);
-
     randombytes(send_hdr.nonce, crypto_box_NONCEBYTES);
     size_t pt_len = MIN(len, MAX_MESSAGE_LEN);
+    LOG(DBG, "encrypting %zu / %zu bytes of plaintext", pt_len, len);
     size_t padded_pt_len = pt_len + crypto_box_ZEROBYTES;
     send_hdr.len = (uint16_t)pt_len + crypto_box_ZEROBYTES;
     p_nn->send_buf_len = send_hdr.len + sizeof(hdr_t);
