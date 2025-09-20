@@ -53,7 +53,7 @@ def create_proxy(in_port, out_port, encrypt_in=False, encrypt_out=False) -> Prox
     if "valgrind" in proc_args_list:
         time.sleep(1)
     else:
-        time.sleep(0.5)
+        time.sleep(0.1)
 
     return proxy
 
@@ -66,6 +66,7 @@ def single_proxy_unencrypted_fs():
 
     for proxy in proxies:
         proxy.proc.terminate()
+    time.sleep(0.1)
 
 
 @pytest.fixture(scope="function")
