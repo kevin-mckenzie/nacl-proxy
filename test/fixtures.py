@@ -53,7 +53,7 @@ def create_proxy(in_port, out_port, encrypt_in=False, encrypt_out=False) -> Prox
     if "valgrind" in proc_args_list:
         time.sleep(1)
     else:
-        time.sleep(0.2)
+        time.sleep(0.5)
 
     return proxy
 
