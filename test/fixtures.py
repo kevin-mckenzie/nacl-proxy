@@ -2,7 +2,7 @@ import dataclasses
 import time
 import subprocess
 import os
-import random
+import socket
 
 import pytest
 
@@ -23,6 +23,16 @@ class HTTPServer:
     proc: subprocess.Popen
     addr: str
     port: int
+
+
+def free_port():
+    """Fixture to provide a dynamically allocated free port."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    s.bind(("127.0.0.1", 0))  # Bind to localhost on an ephemeral port
+    port = s.getsockname()[1]
+    s.close()
+    return port
 
 
 def create_proxy(in_port, out_port, encrypt_in=False, encrypt_out=False) -> Proxy:
@@ -61,7 +71,7 @@ def create_proxy(in_port, out_port, encrypt_in=False, encrypt_out=False) -> Prox
 
 @pytest.fixture(scope="function")
 def single_proxy_unencrypted_fs():
-    port = random.randint(20000, 40000)
+    port = free_port()
     proxies = [create_proxy(port, 8000)]
 
     yield proxies
@@ -74,7 +84,7 @@ def single_proxy_unencrypted_fs():
 @pytest.fixture(scope="function")
 def double_proxy_unencrypted_fs():
     proxies = []
-    port1, port2 = random.randint(20000, 40000), random.randint(20000, 40000)
+    port1, port2 = free_port(), free_port()
     proxies.append(create_proxy(port1, port2))
     proxies.append(create_proxy(port2, 8000))
 
@@ -88,9 +98,9 @@ def double_proxy_unencrypted_fs():
 def triple_proxy_unencrypted_fs():
     proxies = []
     port1, port2, port3 = (
-        random.randint(20000, 40000),
-        random.randint(20000, 40000),
-        random.randint(20000, 40000),
+        free_port(),
+        free_port(),
+        free_port(),
     )
 
     proxies.append(create_proxy(port1, port2))
@@ -106,7 +116,7 @@ def triple_proxy_unencrypted_fs():
 @pytest.fixture(scope="function")
 def double_proxy_encrypted_fs():
     proxies = []
-    port1, port2 = random.randint(20000, 40000), random.randint(20000, 40000)
+    port1, port2 = free_port(), free_port()
     proxies.append(create_proxy(port1, port2, encrypt_out=True))
     proxies.append(create_proxy(port2, 8000, encrypt_in=True))
 
@@ -120,9 +130,9 @@ def double_proxy_encrypted_fs():
 def triple_proxy_encrypted_fs():
     proxies = []
     port1, port2, port3 = (
-        random.randint(20000, 40000),
-        random.randint(20000, 40000),
-        random.randint(20000, 40000),
+        free_port(),
+        free_port(),
+        free_port(),
     )
 
     proxies.append(create_proxy(port1, port2, encrypt_out=True))
@@ -139,10 +149,10 @@ def triple_proxy_encrypted_fs():
 def quad_proxy_encrypted_fs():
     proxies = []
     port1, port2, port3, port4 = (
-        random.randint(20000, 40000),
-        random.randint(20000, 40000),
-        random.randint(20000, 40000),
-        random.randint(20000, 40000),
+        free_port(),
+        free_port(),
+        free_port(),
+        free_port(),
     )
 
     proxies.append(create_proxy(port1, port2, encrypt_out=True))

@@ -1,9 +1,11 @@
 #include <assert.h>
+#include <errno.h>
 #include <stddef.h>
 #include <string.h>
 #include <unistd.h>
 
 #ifdef __GLIBC__
+#include <asm-generic/errno-base.h>
 #include <sys/poll.h>
 #else
 #include <poll.h>
@@ -122,7 +124,9 @@ int event_run_loop(volatile int *p_run_flag, int poll_timeout) { // NOLINT (read
         int poll_ct = poll(g_mgr.pfds, g_mgr.max_idx, poll_timeout);
 
         if (-1 == poll_ct) {
-            LOG(ERR, "poll");
+            if (EINTR != errno) {
+                LOG(ERR, "poll");
+            }
             return PROXY_ERR;
         }
 
