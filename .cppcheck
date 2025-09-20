@@ -1,1 +1,1 @@
---suppress=missingIncludeSystem
+--suppress=missingIncludeSystem --inline-suppr

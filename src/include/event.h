@@ -13,8 +13,10 @@ int event_add(int fd, short events, void *p_data, callback_t *callback_func);
 
 int event_remove(int fd);
 
-int event_run_loop(const int *p_run_flag, int poll_timeout);
+int event_run_loop(volatile int *p_run_flag, int poll_timeout);
 
 int event_modify(int fd, short events);
+
+void event_teardown(void (*custom_free)(void *));
 
 #endif /* EVENT_H */

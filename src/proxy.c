@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <signal.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <sys/socket.h>
@@ -24,12 +25,13 @@ enum ProxySide {
     SERVER = 2,
 };
 
-typedef struct {
+typedef struct { // NOLINT (clang-diagnostic-padded)
     config_t *config;
     net_t client;
     net_t server;
     buf_t client_send_buf;
     buf_t server_send_buf;
+    int ref;
 } conn_t;
 
 static int accept_callback(int listen_fd, short revents, void *p_data);
@@ -39,13 +41,25 @@ static int conn_callback(int conn_fd, short revents, void *p_data);
 static int handle_recv(conn_t *p_conn, enum ProxySide side);
 static int handle_send(conn_t *p_conn, enum ProxySide side);
 static void close_connection(conn_t **pp_conn);
+static void free_connection(conn_t *p_conn);
+
+volatile sig_atomic_t g_run_flag = 1; // NOLINT
+
+static void signal_handler(int arg) {
+    (void)arg;
+    g_run_flag = 0;
+}
 
 int proxy_run(config_t *p_config) {
     ASSERT_RET(NULL != p_config); // NOLINT (misc-include-cleaner)
 
+    struct sigaction act = {0};
+    act.sa_handler = signal_handler;
+    sigaction(SIGINT, &act, NULL);
+    sigaction(SIGTERM, &act, NULL);
+
     int err = 0;
     bool b_event_added = false;
-    int run = 1;
 
     int server_fd = network_get_listen_socket(p_config->bind_addr, p_config->bind_port);
     if (-1 == server_fd) {
@@ -59,7 +73,7 @@ int proxy_run(config_t *p_config) {
     }
     b_event_added = true;
 
-    err = event_run_loop(&run, -1);
+    err = event_run_loop(&g_run_flag, -1);
 
 CLEANUP:
     if (b_event_added) {
@@ -68,6 +82,7 @@ CLEANUP:
     if (-1 != server_fd) {
         close(server_fd);
     }
+    event_teardown((void (*)(void *))free_connection); // NOLINT (clang-diagnostic-cast-function-type-strict)
     return err;
 }
 
@@ -108,6 +123,7 @@ static int establish_connections(int listen_fd, conn_t *p_conn) {
         close_connection(&p_conn);
         return PROXY_ERR;
     }
+    p_conn->ref = 2;
 
     return 0;
 }
@@ -316,19 +332,33 @@ static void close_connection(conn_t **pp_conn) {
         (void)event_remove(p_conn->client.sock_fd);
         (void)close(p_conn->client.sock_fd);
         p_conn->client.sock_fd = -1;
-        if (p_conn->client.b_encrypted) {
-            FREE_AND_NULL(p_conn->client.netnacl);
-        }
     }
 
     if (-1 != p_conn->server.sock_fd) {
         (void)event_remove(p_conn->server.sock_fd);
         (void)close(p_conn->server.sock_fd);
         p_conn->server.sock_fd = -1;
-        if (p_conn->client.b_encrypted) {
-            FREE_AND_NULL(p_conn->client.netnacl);
-        }
     }
 
-    FREE_AND_NULL(*pp_conn);
+    p_conn->ref = 0;
+    free_connection(p_conn);
+    *pp_conn = NULL;
+}
+
+static void free_connection(conn_t *p_conn) {
+
+    if (NULL != p_conn) {
+        if (1 >= p_conn->ref) {
+            if (NULL != p_conn->client.netnacl) {
+                FREE_AND_NULL(p_conn->client.netnacl);
+            }
+
+            if (NULL != p_conn->server.netnacl) {
+                FREE_AND_NULL(p_conn->server.netnacl);
+            }
+            free(p_conn);
+        } else {
+            p_conn->ref--;
+        }
+    }
 }

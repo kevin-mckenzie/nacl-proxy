@@ -1,5 +1,7 @@
 #include <assert.h>
 #include <stddef.h>
+#include <string.h>
+#include <unistd.h>
 
 #ifdef __GLIBC__
 #include <sys/poll.h>
@@ -112,7 +114,8 @@ int event_remove(int efd) {
     return PROXY_SUCCESS;
 }
 
-int event_run_loop(const int *p_run_flag, int poll_timeout) {
+// cppcheck-suppress constParameterPointer
+int event_run_loop(volatile int *p_run_flag, int poll_timeout) { // NOLINT (readability-non-const-parameter)
     ASSERT_RET(NULL != p_run_flag);
 
     while (1 == *p_run_flag) {
@@ -135,6 +138,23 @@ int event_run_loop(const int *p_run_flag, int poll_timeout) {
     }
 
     return PROXY_SUCCESS;
+}
+
+void event_teardown(void (*custom_free)(void *)) {
+    for (nfds_t idx = 0; idx < g_mgr.max_idx; idx++) {
+        if (-1 < g_mgr.events[idx].fd) {
+            (void)close(g_mgr.events[idx].fd);
+        }
+
+        if (NULL != custom_free) {
+            custom_free(g_mgr.events[idx].data);
+        }
+
+        memset(&g_mgr.events[idx], 0, sizeof(event_t));
+        memset(&g_mgr.pfds[idx], 0, sizeof(struct pollfd));
+        g_mgr.events[idx].fd = -1;
+        g_mgr.pfds[idx].fd = -1;
+    }
 }
 
 static int handle_event(int idx) {
