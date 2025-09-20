@@ -10,6 +10,8 @@ from typing import Optional, Tuple
 import pytest
 import requests
 
+# pylint: disable=W0621,W0611
+
 from fixtures import (
     HTTPServer,
     Proxy,
@@ -22,8 +24,6 @@ from fixtures import (
     quad_proxy_encrypted_fs,
 )
 
-# pylint: disable=W0621
-
 
 @pytest.fixture
 def proxy_configuration(request):
@@ -33,14 +33,18 @@ def proxy_configuration(request):
 
 # ---------------- helpers (assume /tmp docroot) ----------------
 
-DOCROOT = Path("/tmp")  # per user: the server serves /tmp
+DOCROOT = Path("/tmp")
+
 
 def _unique_dir(prefix: str) -> Path:
     p = DOCROOT / f"{prefix}-{uuid.uuid4().hex[:10]}"
     p.mkdir(parents=True, exist_ok=True)
     return p
 
-def _write_file(dirpath: Path, name: str, *, size: int = 0, binary: bool = False) -> Path:
+
+def _write_file(
+    dirpath: Path, name: str, *, size: int = 0, binary: bool = False
+) -> Path:
     """Create a file under /tmp/<dirpath>/<name> with optional size."""
     p = dirpath / name
     p.parent.mkdir(parents=True, exist_ok=True)
@@ -58,7 +62,9 @@ def _write_file(dirpath: Path, name: str, *, size: int = 0, binary: bool = False
         else:
             with p.open("w", encoding="utf-8") as f:
                 while f.tell() < size:
-                    f.write("".join(random.choice(string.ascii_letters) for _ in range(120)))
+                    f.write(
+                        "".join(random.choice(string.ascii_letters) for _ in range(120))
+                    )
                     f.write("\n")
     else:
         mode = "wb" if binary else "w"
@@ -67,6 +73,7 @@ def _write_file(dirpath: Path, name: str, *, size: int = 0, binary: bool = False
                 f.write("hello world\n")
     return p
 
+
 def _base_urls(proxy: Proxy, server: HTTPServer) -> Tuple[str, str]:
     """Return (direct_base, proxy_base)."""
     return (
@@ -74,7 +81,10 @@ def _base_urls(proxy: Proxy, server: HTTPServer) -> Tuple[str, str]:
         f"http://{proxy.in_addr}:{proxy.in_port}",
     )
 
-def _sha256_stream(url: str, *, session: Optional[requests.Session] = None, timeout=5) -> str:
+
+def _sha256_stream(
+    url: str, *, session: Optional[requests.Session] = None, timeout=5
+) -> str:
     s = session or requests
     h = hashlib.sha256()
     with s.get(url, stream=True, timeout=timeout) as r:
@@ -86,6 +96,7 @@ def _sha256_stream(url: str, *, session: Optional[requests.Session] = None, time
 
 
 # ---------------- baseline parity ----------------
+
 
 @pytest.mark.parametrize(
     "proxy_configuration",
@@ -114,6 +125,7 @@ def test_get_simple(proxy_configuration, python_http_server_fs):
 
 # ---------------- HTTP method parity & errors ----------------
 
+
 @pytest.mark.parametrize(
     "proxy_configuration",
     [
@@ -134,7 +146,9 @@ def test_head_matches_get_length(proxy_configuration, python_http_server_fs):
     h_direct = requests.head(direct_base, timeout=3)
     h_proxy = requests.head(proxy_base, timeout=3)
     assert h_direct.status_code == h_proxy.status_code == 200
-    assert h_direct.headers.get("Content-Length") == h_proxy.headers.get("Content-Length")
+    assert h_direct.headers.get("Content-Length") == h_proxy.headers.get(
+        "Content-Length"
+    )
     assert not h_direct.content and not h_proxy.content
 
 
@@ -190,6 +204,7 @@ def test_unsupported_methods_passthrough(proxy_configuration, python_http_server
 
 # ---------------- static files: content-type & integrity ----------------
 
+
 @pytest.mark.parametrize(
     "proxy_configuration",
     [
@@ -202,7 +217,9 @@ def test_unsupported_methods_passthrough(proxy_configuration, python_http_server
     ],
     indirect=True,
 )
-def test_content_type_preserved_for_static_files(proxy_configuration, python_http_server_fs):
+def test_content_type_preserved_for_static_files(
+    proxy_configuration, python_http_server_fs
+):
     proxy: Proxy = proxy_configuration[0]
     server: HTTPServer = python_http_server_fs
 
@@ -249,6 +266,7 @@ def test_large_file_transfer_integrity(proxy_configuration, python_http_server_f
 
 
 # ---------------- ranges & directory listings ----------------
+
 
 @pytest.mark.parametrize(
     "proxy_configuration",
@@ -322,6 +340,7 @@ def test_directory_listing_parity(proxy_configuration, python_http_server_fs):
 
 # ---------------- concurrency & persistence ----------------
 
+
 @pytest.mark.parametrize(
     "proxy_configuration",
     [
@@ -334,7 +353,9 @@ def test_directory_listing_parity(proxy_configuration, python_http_server_fs):
     ],
     indirect=True,
 )
-def test_concurrent_clients_download_same_file(proxy_configuration, python_http_server_fs):
+def test_concurrent_clients_download_same_file(
+    proxy_configuration, python_http_server_fs
+):
     """Many clients concurrently downloading the same file through the proxy."""
     proxy: Proxy = proxy_configuration[0]
     server: HTTPServer = python_http_server_fs
@@ -374,7 +395,7 @@ def test_keepalive_many_small_requests(proxy_configuration, python_http_server_f
     server: HTTPServer = python_http_server_fs
 
     base = _unique_dir("small")
-    files = [ _write_file(base, f"f{i}.txt") for i in range(20) ]
+    files = [_write_file(base, f"f{i}.txt") for i in range(20)]
 
     with requests.Session() as s:
         for pth in files:
@@ -397,7 +418,9 @@ def test_keepalive_many_small_requests(proxy_configuration, python_http_server_f
     ],
     indirect=True,
 )
-def test_client_abort_does_not_poison_next_request(proxy_configuration, python_http_server_fs):
+def test_client_abort_does_not_poison_next_request(
+    proxy_configuration, python_http_server_fs
+):
     """
     Simulate a client that aborts mid-transfer (close early), then perform a fresh request.
     Proxy should properly clean up and serve subsequent requests.
@@ -422,6 +445,7 @@ def test_client_abort_does_not_poison_next_request(proxy_configuration, python_h
 
 
 # ---------------- URL handling quirks ----------------
+
 
 @pytest.mark.parametrize(
     "proxy_configuration",

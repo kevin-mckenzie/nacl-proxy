@@ -126,6 +126,8 @@ CLEANUP:
 }
 
 ssize_t netnacl_recv(netnacl_t *p_nn, uint8_t *buf, size_t len, int flags) {
+    // #lizard forgives
+    // This is not that complicated and I want to keep the asserts
     ASSERT_RET(NULL != p_nn);
     ASSERT_RET(NULL != buf);
 
@@ -261,7 +263,6 @@ static int decrypt_ciphertext(netnacl_t *p_nn) {
 static ssize_t copy_plaintext_to_buffer(netnacl_t *p_nn, uint8_t *buf, size_t len) {
     ASSERT_RET(NULL != p_nn);
     ASSERT_RET(NULL != buf);
-
 
     ASSERT_RET(p_nn->recv_pt_len <= MAX_MESSAGE_LEN);
     size_t read_sz = MIN(p_nn->recv_pt_len - p_nn->recv_pt_pos, len);

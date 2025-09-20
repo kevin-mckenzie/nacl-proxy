@@ -287,7 +287,7 @@ static int handle_send(conn_t *p_conn, enum ProxySide side) {
         p_buf = &p_conn->server_send_buf;
     }
 
-    int err = buf_send(p_conn_net, p_buf, 0);
+    int err = buf_send(p_conn_net, p_buf, MSG_NOSIGNAL);
 
     if (0 == err) {
         if (-1 == p_mod_net->sock_fd) {

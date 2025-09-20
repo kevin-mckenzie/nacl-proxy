@@ -43,17 +43,20 @@ def filenames_string(*patterns) -> str:
 C_FILES = filenames_string("src/**/*.c", "src/**/*.h")
 CMAKE_FILES = filenames_string("cmake/*.cmake", "CMakeLists.txt")
 
+
 @invoke.task
 def format(ctx):  # pylint: disable=W0622
     ctx.run("ruff format")
     ctx.run(f"clang-format -i {C_FILES}")
     ctx.run(f"cmake-format -i {CMAKE_FILES}")
 
+
 @invoke.task
 def lint(ctx):
     ctx.run(f"lizard -w -C 12 -L 60 {C_FILES}")
     ctx.run(f"clang-format -i --dry-run -Werror {C_FILES}")
     ctx.run(f"cmake-format --check -l debug {CMAKE_FILES}")
+
 
 @invoke.task
 def analyze(
@@ -127,6 +130,7 @@ def build(
     ctx.run(f"cmake {cmake_defines} -S . -B {build_dir}")
     ctx.run(f"cmake --build {build_dir} --target install")
 
+
 @invoke.task
 def test(
     ctx: invoke.context,
@@ -146,9 +150,10 @@ def test(
     bin_path = pathlib.Path(f"./dist/bin/proxy-{build_name}").absolute().as_posix()
     emulator = TARGETS[target].get("emulator", "")
 
-    print(f'PYTHON_PATH=test pytest . --bin_path={bin_path} --emulator={emulator}')
-    ctx.run(f'PYTHON_PATH=test EMULATOR=\"{emulator}\" BIN_PATH=\"{bin_path}\" pytest . -k={k} -s -vv')
-
+    print(f"PYTHON_PATH=test pytest . --bin_path={bin_path} --emulator={emulator}")
+    ctx.run(
+        f'PYTHON_PATH=test EMULATOR="{emulator}" BIN_PATH="{bin_path}" pytest . -k={k} -s -vv'
+    )
 
 
 @invoke.task
@@ -176,6 +181,7 @@ def docker(ctx: invoke.context, build: bool = False, push: bool = False):  # pyl
 
     if push:
         ctx.run(f"docker push {DOCKER_IMAGE}")
+
 
 @invoke.task
 def install_toolchains(ctx, target="all"):

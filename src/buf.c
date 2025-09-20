@@ -36,6 +36,11 @@ int buf_send(net_t *p_net, buf_t *p_buf, int flags) {
                 // Unlike buf_recv, we know the size of the data and must make sure it is all sent
                 return PROXY_WOULD_BLOCK;
             }
+
+            if ((EPIPE == errno) || (ECONNRESET == errno)) {
+                return PROXY_DISCONNECT;
+            }
+
             LOG(ERR, "send");
             return PROXY_ERR;
         }

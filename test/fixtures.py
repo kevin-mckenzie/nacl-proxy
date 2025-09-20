@@ -14,7 +14,7 @@ class Proxy:
     out_addr: str
     out_port: int
     encrypt_in: bool = False
-    encrypt_out: bool =False
+    encrypt_out: bool = False
 
 
 @dataclasses.dataclass
@@ -28,7 +28,9 @@ def create_proxy(in_port, out_port, encrypt_in=False, encrypt_out=False) -> Prox
     bin_path = os.getenv("BIN_PATH")
     emulator_str = os.getenv("EMULATOR")
 
-    proc_args_list = [bin_path] if not emulator_str else emulator_str.split(" ") + [bin_path]
+    proc_args_list = (
+        [bin_path] if not emulator_str else emulator_str.split(" ") + [bin_path]
+    )
 
     if encrypt_in:
         proc_args_list += ["-i"]
@@ -56,7 +58,6 @@ def create_proxy(in_port, out_port, encrypt_in=False, encrypt_out=False) -> Prox
     return proxy
 
 
-
 @pytest.fixture(scope="function")
 def single_proxy_unencrypted_fs():
     proxies = [create_proxy(7999, 8000)]
@@ -65,6 +66,7 @@ def single_proxy_unencrypted_fs():
 
     for proxy in proxies:
         proxy.proc.terminate()
+
 
 @pytest.fixture(scope="function")
 def double_proxy_unencrypted_fs():
@@ -76,6 +78,7 @@ def double_proxy_unencrypted_fs():
 
     for proxy in proxies:
         proxy.proc.terminate()
+
 
 @pytest.fixture(scope="function")
 def triple_proxy_unencrypted_fs():
@@ -113,6 +116,7 @@ def triple_proxy_encrypted_fs():
 
     for proxy in proxies:
         proxy.proc.terminate()
+
 
 @pytest.fixture(scope="function")
 def quad_proxy_encrypted_fs():

@@ -1,6 +1,8 @@
 set(TARGET proxy-${BUILD_NAME})
 
 include_directories(include)
+include_directories(${CMAKE_SOURCE_DIR}/external)
+
 add_executable(
   ${TARGET}
   main.c
@@ -9,7 +11,7 @@ add_executable(
   network.c
   proxy.c
   netnacl.c
-  tweetnacl.c)
+  ${CMAKE_SOURCE_DIR}/external/tweetnacl.c)
 target_compile_options(${TARGET} PRIVATE -Wall -Wpedantic -Werror)
 
 target_compile_definitions(${TARGET} PRIVATE _POSIX_C_SOURCE=200809L)
