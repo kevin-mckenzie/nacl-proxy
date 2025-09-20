@@ -196,10 +196,10 @@ static int recv_hdr(netnacl_t *p_nn, int flags) {
             recv(p_nn->sock_fd, &p_nn->recv_hdr + p_nn->hdr_bytes_recvd, sizeof(hdr_t) - p_nn->hdr_bytes_recvd, flags);
 
         if (-1 == recvd) {
-            LOG(ERR, "recv");
             if ((EAGAIN == errno) || (EWOULDBLOCK == errno)) {
                 return NN_WOULD_BLOCK;
             }
+            LOG(ERR, "recv");
             return NN_ERR;
         }
 
@@ -262,7 +262,9 @@ static ssize_t copy_plaintext_to_buffer(netnacl_t *p_nn, uint8_t *buf, size_t le
     ASSERT_RET(NULL != p_nn);
     ASSERT_RET(NULL != buf);
 
-    size_t read_sz = MIN(p_nn->recv_pt_len, len);
+
+    ASSERT_RET(p_nn->recv_pt_len <= MAX_MESSAGE_LEN);
+    size_t read_sz = MIN(p_nn->recv_pt_len - p_nn->recv_pt_pos, len);
     memcpy(buf, p_nn->recv_pt + p_nn->recv_pt_pos, read_sz);
 
     p_nn->recv_pt_pos += read_sz;
