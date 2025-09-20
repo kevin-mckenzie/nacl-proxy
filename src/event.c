@@ -44,7 +44,7 @@ int event_add(int efd, short events, void *p_data, callback_t *callback_func) {
     }
 
     if (MAX_EVENTS == g_mgr.num_events) {
-        LOG(WRN, "event manager at capacity");
+        LOG(WRN, "event manager at capacity: %zu events", g_mgr.num_events);
         return PROXY_MAX_EVENTS;
     }
 

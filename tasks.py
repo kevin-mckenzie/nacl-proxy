@@ -151,7 +151,7 @@ def test(
     emulator = TARGETS[target].get("emulator", "")
 
     ctx.run(
-        f'PYTHON_PATH=test EMULATOR="{emulator}" BIN_PATH="{bin_path}" pytest . -k={k} -vv'
+        f'PYTHON_PATH=test EMULATOR="{emulator}" BIN_PATH="{bin_path}" pytest . -k={k} -vv -s'
     )
 
 
