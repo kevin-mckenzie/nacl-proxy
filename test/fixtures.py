@@ -2,6 +2,7 @@ import dataclasses
 import time
 import subprocess
 import os
+import random
 
 import pytest
 
@@ -60,7 +61,8 @@ def create_proxy(in_port, out_port, encrypt_in=False, encrypt_out=False) -> Prox
 
 @pytest.fixture(scope="function")
 def single_proxy_unencrypted_fs():
-    proxies = [create_proxy(7999, 8000)]
+    port = random.randint(20000, 40000)
+    proxies = [create_proxy(port, 8000)]
 
     yield proxies
 
@@ -72,8 +74,9 @@ def single_proxy_unencrypted_fs():
 @pytest.fixture(scope="function")
 def double_proxy_unencrypted_fs():
     proxies = []
-    proxies.append(create_proxy(7998, 7999))
-    proxies.append(create_proxy(7999, 8000))
+    port1, port2 = random.randint(20000, 40000), random.randint(20000, 40000)
+    proxies.append(create_proxy(port1, port2))
+    proxies.append(create_proxy(port2, 8000))
 
     yield proxies
 
@@ -84,9 +87,15 @@ def double_proxy_unencrypted_fs():
 @pytest.fixture(scope="function")
 def triple_proxy_unencrypted_fs():
     proxies = []
-    proxies.append(create_proxy(7997, 7998))
-    proxies.append(create_proxy(7998, 7999))
-    proxies.append(create_proxy(7999, 8000))
+    port1, port2, port3 = (
+        random.randint(20000, 40000),
+        random.randint(20000, 40000),
+        random.randint(20000, 40000),
+    )
+
+    proxies.append(create_proxy(port1, port2))
+    proxies.append(create_proxy(port2, port3))
+    proxies.append(create_proxy(port3, 8000))
 
     yield proxies
 
@@ -97,8 +106,9 @@ def triple_proxy_unencrypted_fs():
 @pytest.fixture(scope="function")
 def double_proxy_encrypted_fs():
     proxies = []
-    proxies.append(create_proxy(7998, 7999, encrypt_out=True))
-    proxies.append(create_proxy(7999, 8000, encrypt_in=True))
+    port1, port2 = random.randint(20000, 40000), random.randint(20000, 40000)
+    proxies.append(create_proxy(port1, port2, encrypt_out=True))
+    proxies.append(create_proxy(port2, 8000, encrypt_in=True))
 
     yield proxies
 
@@ -109,9 +119,15 @@ def double_proxy_encrypted_fs():
 @pytest.fixture(scope="function")
 def triple_proxy_encrypted_fs():
     proxies = []
-    proxies.append(create_proxy(7997, 7998, encrypt_out=True))
-    proxies.append(create_proxy(7998, 7999, encrypt_in=True, encrypt_out=True))
-    proxies.append(create_proxy(7999, 8000, encrypt_in=True))
+    port1, port2, port3 = (
+        random.randint(20000, 40000),
+        random.randint(20000, 40000),
+        random.randint(20000, 40000),
+    )
+
+    proxies.append(create_proxy(port1, port2, encrypt_out=True))
+    proxies.append(create_proxy(port2, port3, encrypt_in=True, encrypt_out=True))
+    proxies.append(create_proxy(port3, 8000, encrypt_in=True))
 
     yield proxies
 
@@ -122,10 +138,17 @@ def triple_proxy_encrypted_fs():
 @pytest.fixture(scope="function")
 def quad_proxy_encrypted_fs():
     proxies = []
-    proxies.append(create_proxy(7996, 7997, encrypt_out=True))
-    proxies.append(create_proxy(7997, 7998, encrypt_in=True, encrypt_out=True))
-    proxies.append(create_proxy(7998, 7999, encrypt_in=True, encrypt_out=True))
-    proxies.append(create_proxy(7999, 8000, encrypt_in=True))
+    port1, port2, port3, port4 = (
+        random.randint(20000, 40000),
+        random.randint(20000, 40000),
+        random.randint(20000, 40000),
+        random.randint(20000, 40000),
+    )
+
+    proxies.append(create_proxy(port1, port2, encrypt_out=True))
+    proxies.append(create_proxy(port2, port3, encrypt_in=True, encrypt_out=True))
+    proxies.append(create_proxy(port3, port4, encrypt_in=True, encrypt_out=True))
+    proxies.append(create_proxy(port4, 8000, encrypt_in=True))
 
     yield proxies
 
