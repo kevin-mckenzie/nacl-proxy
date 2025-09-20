@@ -140,7 +140,7 @@ static int get_ipv4_listener(const char *addr_str, uint16_t port) {
     serv_addr.sin_family = AF_INET;
     serv_addr.sin_port = htons(port);
     if (-1 == bind(server_fd, (struct sockaddr *)&serv_addr, sizeof(serv_addr))) {
-        (void)fprintf(stderr, "BIND FAILED ON: %hu", port);
+        (void)fprintf(stderr, "BIND FAILED ON: %hu", port); // NOLINT
         LOG(ERR, "bind");
         goto CLEANUP;
     }
