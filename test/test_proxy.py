@@ -50,8 +50,6 @@ def _write_file(
     p.parent.mkdir(parents=True, exist_ok=True)
     if size > 0:
         if binary:
-            # deterministic blocks: avoid test flakiness
-            random.seed(12345)
             block = os.urandom(8192)
             remaining = size
             with p.open("wb") as f:
