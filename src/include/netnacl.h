@@ -7,7 +7,7 @@
 #include "tweetnacl.h"
 
 enum {
-    NN_DISCONNECT = -4,
+    NN_DISCONNECT = -5,
     NN_CRYPTO_ERR,
     NN_WANT_READ,
     NN_WANT_WRITE,

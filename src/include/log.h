@@ -18,7 +18,7 @@ enum log_lvl {
     ERR
 };
 
-#define LOG_LVL IO
+#define LOG_LVL ERR
 
 #define COLOR_RESET "\x1b[0m"   /**< ANSI Reset */
 #define COLOR_RED "\x1b[31m"    /**< ANSI Red */
