@@ -158,6 +158,8 @@ ssize_t netnacl_recv(netnacl_t *p_nn, uint8_t *buf, size_t len, int flags) {
     ASSERT_RET(NULL != p_nn);
     ASSERT_RET(NULL != buf);
 
+    LOG(ERR, "ENTER");
+
     ssize_t ret = 0;
 
     if (p_nn->hdr_bytes_recvd < sizeof(hdr_t)) {
@@ -204,6 +206,8 @@ EXIT:
 ssize_t netnacl_send(netnacl_t *p_nn, const uint8_t *buf, size_t len, int flags) {
     ASSERT_RET(NULL != p_nn);
     ASSERT_RET(NULL != buf);
+
+    LOG(ERR, "ENTER");
 
     // only even try to send len bytes
     if (0 == p_nn->send_buf_len) {

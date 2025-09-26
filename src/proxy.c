@@ -287,10 +287,11 @@ static int handshake_callback(int conn_fd, short revents, void *p_data) {
         }
         goto CLEANUP;
     }
-
+    LOG(ERR, "ready for conn_callback");
     return err;
 
 CLEANUP:
+    LOG(ERR, "removing conn");
     close_connection(&p_conn);
     return err;
 }
@@ -298,14 +299,21 @@ CLEANUP:
 static int do_handshake(conn_t *p_conn, short revents, enum ProxySide side) {
     ASSERT_RET(NULL != p_conn);
 
+    short events = POLLIN;
     net_t *p_net = NULL;
 
     switch (side) {
     case CLIENT:
         p_net = &p_conn->client;
+        if (0 < p_conn->client_send_buf.size) {
+            events = POLLOUT;
+        }
         break;
     case SERVER:
         p_net = &p_conn->server;
+        if (0 < p_conn->server_send_buf.size) {
+            events = POLLOUT;
+        }
         break;
     default:
         return PROXY_ERR;
@@ -325,12 +333,15 @@ static int do_handshake(conn_t *p_conn, short revents, enum ProxySide side) {
     switch (err) {
     case NN_SUCCESS:
         (void)event_remove(p_net->sock_fd);
-        return event_add(p_net->sock_fd, POLLIN, p_conn, conn_callback);
+        LOG(ERR, "Added %d", p_net->sock_fd);
+        return event_add(p_net->sock_fd, events, p_conn, conn_callback);
         break;
     case NN_WANT_READ:
+        LOG(ERR, "want read %d", p_net->sock_fd);
         return event_modify(p_net->sock_fd, POLLIN);
         break;
     case NN_WANT_WRITE:
+        LOG(ERR, "want write %d", p_net->sock_fd);
         return event_modify(p_net->sock_fd, POLLOUT);
         break;
     default:
@@ -342,6 +353,8 @@ static int conn_callback(int conn_fd, short revents, void *p_data) {
     ASSERT_RET(-1 < conn_fd);
     ASSERT_RET(NULL != p_data);
     ASSERT_RET(0 != revents);
+
+    DEBUG_PRINT("enter");
 
     conn_t *p_conn = (conn_t *)p_data;
 
