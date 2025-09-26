@@ -79,6 +79,8 @@ def single_proxy_unencrypted_fs():
     for proxy in proxies:
         proxy.proc.terminate()
     time.sleep(0.1)
+    for proxy in proxies:
+        assert 0 == proxy.proc.returncode
 
 
 @pytest.fixture(scope="function")

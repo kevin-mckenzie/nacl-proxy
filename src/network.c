@@ -66,7 +66,7 @@ int network_connect_to_server(const char *addr, const char *port_str) {
             continue;
         }
 
-        if (0 != connect(sock_fd, p_curr->ai_addr, p_curr->ai_addrlen)) {
+        if (-1 == connect(sock_fd, p_curr->ai_addr, p_curr->ai_addrlen)) {
             LOG(ERR, "connect");
             (void)close(sock_fd);
             sock_fd = -1;
