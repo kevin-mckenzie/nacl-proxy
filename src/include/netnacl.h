@@ -9,7 +9,8 @@
 enum {
     NN_DISCONNECT = -4,
     NN_CRYPTO_ERR,
-    NN_WOULD_BLOCK,
+    NN_WANT_READ,
+    NN_WANT_WRITE,
     NN_ERR,
     NN_SUCCESS,
 };
@@ -25,7 +26,9 @@ typedef struct {
 
 typedef struct netnacl_t netnacl_t;
 
-int netnacl_wrap(int sock_fd, netnacl_t **pp_nn);
+netnacl_t *netnacl_create(int sock_fd);
+
+int netnacl_wrap(netnacl_t *p_nn);
 
 ssize_t netnacl_recv(netnacl_t *p_nn, uint8_t *buf, size_t len, int flags);
 

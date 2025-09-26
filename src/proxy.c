@@ -35,8 +35,10 @@ typedef struct { // NOLINT (clang-diagnostic-padded)
 } conn_t;
 
 static int accept_callback(int listen_fd, short revents, void *p_data);
-static int establish_connections(int listen_fd, conn_t *p_conn);
-static int establish_connection(int listen_fd, conn_t *p_conn, enum ProxySide side);
+static int pending_connect_callback(int conn_fd, short revents, void *p_data);
+static int add_connection_events(conn_t *p_conn);
+static int handshake_callback(int conn_fd, short revents, void *p_data);
+static int do_handshake(conn_t *p_conn, short revents, enum ProxySide side);
 static int conn_callback(int conn_fd, short revents, void *p_data);
 static int handle_recv(conn_t *p_conn, enum ProxySide side);
 static int handle_send(conn_t *p_conn, enum ProxySide side);
@@ -91,103 +93,255 @@ static int accept_callback(int listen_fd, short revents, void *p_data) {
     ASSERT_RET(0 != revents);
     ASSERT_RET(NULL != p_data);
 
-    config_t *p_config = (config_t *)p_data;
-
-    if ((POLLERR | POLLHUP | POLLNVAL) & revents) { // NOLINT (hicpp-signed-bitwise)
+    if ((POLLERR | POLLHUP | POLLNVAL | POLLOUT) & revents) { // NOLINT (hicpp-signed-bitwise)
         LOG(ERR, "listener revents: %hx", (unsigned short)revents);
-        close(listen_fd);
-        event_remove(listen_fd);
         return PROXY_ERR;
     }
-
-    if (POLLIN & revents) {
-        conn_t *p_conn = (conn_t *)calloc(1, sizeof(conn_t));
-        if (NULL == p_conn) {
-            LOG(ERR, "conn_t calloc");
-            return PROXY_ERR;
-        }
-        p_conn->config = p_config;
-
-        return establish_connections(listen_fd, p_conn);
-    }
-
-    return 0; // Spurious event?
-}
-
-static int establish_connections(int listen_fd, conn_t *p_conn) {
-    ASSERT_RET(-1 < listen_fd);
-    ASSERT_RET(NULL != p_conn);
-
-    if ((0 != establish_connection(listen_fd, p_conn, CLIENT)) ||
-        (0 != establish_connection(listen_fd, p_conn, SERVER))) {
-        close_connection(&p_conn);
-        return PROXY_ERR;
-    }
-    p_conn->ref = 2;
-
-    return 0;
-}
-
-static int establish_connection(int listen_fd, conn_t *p_conn, enum ProxySide side) {
-    ASSERT_RET(-1 < listen_fd);
-    ASSERT_RET(NULL != p_conn);
-    ASSERT_RET((CLIENT == side) || (SERVER == side));
 
     int err = PROXY_SUCCESS;
+    bool b_added_events = false;
+    config_t *p_config = (config_t *)p_data;
+    conn_t *p_conn = NULL;
 
-    net_t *p_net = NULL;
-    if (CLIENT == side) {
-        p_net = &p_conn->client;
-        p_net->sock_fd = accept(listen_fd, NULL, NULL); // NOLINT (android-cloexec-accept)
-        if (-1 == p_net->sock_fd) {
+    if (POLLIN & revents) {
+
+        p_conn = (conn_t *)calloc(1, sizeof(conn_t));
+        if (NULL == p_conn) {
+            LOG(ERR, "conn_t calloc");
+            err = PROXY_ERR;
+            goto CLEANUP;
+        }
+
+        p_conn->client.sock_fd = accept(listen_fd, NULL, NULL); // NOLINT (android-cloexec-accept)
+        if (-1 == p_conn->client.sock_fd) {
             LOG(ERR, "accept");
-            err = PROXY_ERR;
+            // We should not exit for these, continue trying to accept connections
+            if ((ECONNABORTED != errno) && (EAGAIN != errno) && (EWOULDBLOCK != errno)) {
+                err = PROXY_ERR;
+            }
             goto CLEANUP;
         }
-        p_net->b_encrypted = p_conn->config->b_encrypt_in;
 
-    } else { // SERVER == side
-        p_net = &p_conn->server;
-        p_net->sock_fd = network_connect_to_server(p_conn->config->server_addr, p_conn->config->server_port);
-        if (-1 == p_net->sock_fd) {
-            err = PROXY_ERR;
+        err = network_set_sock_nonblocking(p_conn->client.sock_fd);
+        if (err) {
             goto CLEANUP;
         }
-        p_net->b_encrypted = p_conn->config->b_encrypt_out;
+
+        p_conn->config = p_config;
+        p_conn->client.b_encrypted = p_conn->config->b_encrypt_in;
+        p_conn->server.b_encrypted = p_conn->config->b_encrypt_out;
+
+        p_conn->server.sock_fd = network_connect_to_server(p_conn->config->server_addr, p_conn->config->server_port);
+        if (-1 == p_conn->server.sock_fd) {
+            LOG(ERR, "Could not connect to server");
+            goto CLEANUP;
+        }
+
+        if (EINPROGRESS == errno) {
+            errno = 0;
+            // Cold path: If connection could not be established immediately defer until it can be
+            err = event_add(p_conn->server.sock_fd, POLLOUT, p_conn, pending_connect_callback);
+        } else {
+            // Hot path if connect worked immediately
+            err = add_connection_events(p_conn);
+        }
+
+        b_added_events = true;
+        if (err) {
+            if (PROXY_MAX_EVENTS == err) {
+                err = PROXY_SUCCESS;
+            }
+            goto CLEANUP;
+        }
     }
 
-    if (p_net->b_encrypted) {
-        err = netnacl_wrap(p_net->sock_fd, &p_net->netnacl);
+    LOG(ERR, "exit");
+    return err;
+
+CLEANUP:
+    if (b_added_events) {
+        close_connection(&p_conn);
+    } else {
+        if (-1 != p_conn->server.sock_fd) {
+            close(p_conn->server.sock_fd);
+            p_conn->server.sock_fd = -1;
+        }
+
+        if (-1 != p_conn->client.sock_fd) {
+            close(p_conn->client.sock_fd);
+            p_conn->server.sock_fd = -1;
+        }
+
+        if (NULL != p_conn) {
+            FREE_AND_NULL(p_conn);
+        }
+    }
+    return err;
+}
+
+static int pending_connect_callback(int conn_fd, short revents, void *p_data) {
+    ASSERT_RET(-1 < conn_fd);
+    ASSERT_RET(0 != revents);
+    ASSERT_RET(NULL != p_data);
+
+    int err = PROXY_SUCCESS;
+    conn_t *p_conn = (conn_t *)p_data;
+    ASSERT_RET(p_conn->server.sock_fd == conn_fd);
+
+    if ((POLLERR | POLLHUP | POLLNVAL) & revents) { // NOLINT (hicpp-signed-bitwise)
+        LOG(ERR, "Pending conn revents: %hx", (unsigned short)revents);
+        err = PROXY_ERR;
+        goto CLEANUP;
+    }
+
+    if (POLLOUT & revents) {
+        int sock_err = 1;
+        unsigned int opt_len = sizeof(int);
+        if (-1 == getsockopt(conn_fd, SOL_SOCKET, SO_ERROR, &sock_err, &opt_len)) {
+            LOG(ERR, "getsockopt");
+            err = PROXY_ERR;
+            goto CLEANUP;
+        }
+
+        if (0 != sock_err) {
+            LOG(INF, "Could not complete pending connection for %d", conn_fd);
+            goto CLEANUP;
+        }
+
+        // 0 == sock_err == connection established (according to connect(2))
+        (void)event_remove(conn_fd); // Avoid duplicate event error
+        err = add_connection_events(p_conn);
         if (err) {
             goto CLEANUP;
         }
     }
 
-    err = network_set_sock_nonblocking(p_net->sock_fd);
-    if (err) {
-        goto CLEANUP;
-    }
-
-    err = event_add(p_net->sock_fd, POLLIN, p_conn, conn_callback);
-    if (err) {
-        goto CLEANUP;
-    }
-
-    LOG(INF, "Received connection on [%d]", p_net->sock_fd);
     return err;
 
 CLEANUP:
-    if (-1 != p_net->sock_fd) {
-        close(p_net->sock_fd);
-        p_net->sock_fd = -1;
+    close_connection(&p_conn);
+    return err;
+}
+
+static int add_connection_events(conn_t *p_conn) {
+    ASSERT_RET(NULL != p_conn);
+    ASSERT_RET(-1 < p_conn->client.sock_fd);
+    ASSERT_RET(-1 < p_conn->server.sock_fd);
+
+    int err = PROXY_SUCCESS;
+
+    if (p_conn->client.b_encrypted) {
+        err = event_add(p_conn->client.sock_fd, POLLOUT, p_conn, handshake_callback);
+        if (err) {
+            return err;
+        }
+    } else {
+        err = event_add(p_conn->client.sock_fd, POLLIN, p_conn, conn_callback);
+        if (err) {
+            return err;
+        }
+    }
+    p_conn->ref++;
+
+    if (p_conn->server.b_encrypted) {
+        err = event_add(p_conn->server.sock_fd, POLLOUT, p_conn, handshake_callback);
+        if (err) {
+            return err;
+        }
+    } else {
+        err = event_add(p_conn->server.sock_fd, POLLIN, p_conn, conn_callback);
+        if (err) {
+            return err;
+        }
+    }
+    p_conn->ref++;
+
+    return err;
+}
+
+static int handshake_callback(int conn_fd, short revents, void *p_data) {
+    ASSERT_RET(-1 < conn_fd);
+    ASSERT_RET(0 != revents);
+    ASSERT_RET(NULL != p_data);
+
+    int err = PROXY_SUCCESS;
+    conn_t *p_conn = (conn_t *)p_data;
+
+    if ((POLLERR | POLLHUP | POLLNVAL) & revents) { // NOLINT (hicpp-signed-bitwise)
+        LOG(ERR, "Handshake conn revents: %hx", (unsigned short)revents);
+        err = PROXY_ERR;
+        goto CLEANUP;
+    }
+
+    if (conn_fd == p_conn->client.sock_fd) {
+        err = do_handshake(p_conn, revents, CLIENT);
+    } else if (conn_fd == p_conn->server.sock_fd) {
+        err = do_handshake(p_conn, revents, SERVER);
+    } else {
+        err = PROXY_ERR;
+    }
+
+    if (err) {
+        if (NN_ERR == err) {
+            err = PROXY_SUCCESS; // Handshake failed, keep the event loop running though
+        }
+        goto CLEANUP;
     }
 
     return err;
+
+CLEANUP:
+    close_connection(&p_conn);
+    return err;
+}
+
+static int do_handshake(conn_t *p_conn, short revents, enum ProxySide side) {
+    ASSERT_RET(NULL != p_conn);
+
+    net_t *p_net = NULL;
+
+    switch (side) {
+    case CLIENT:
+        p_net = &p_conn->client;
+        break;
+    case SERVER:
+        p_net = &p_conn->server;
+        break;
+    default:
+        return PROXY_ERR;
+    }
+
+    ASSERT_RET(p_net->b_encrypted);
+
+    if (NULL == p_net->netnacl) {
+        p_net->netnacl = netnacl_create(p_net->sock_fd);
+        if (NULL == p_net->netnacl) {
+            return PROXY_ERR;
+        }
+    }
+
+    int err = netnacl_wrap(p_net->netnacl);
+
+    switch (err) {
+    case NN_SUCCESS:
+        (void)event_remove(p_net->sock_fd);
+        return event_add(p_net->sock_fd, POLLIN, p_conn, conn_callback);
+        break;
+    case NN_WANT_READ:
+        return event_modify(p_net->sock_fd, POLLIN);
+        break;
+    case NN_WANT_WRITE:
+        return event_modify(p_net->sock_fd, POLLOUT);
+        break;
+    default:
+        return err;
+    }
 }
 
 static int conn_callback(int conn_fd, short revents, void *p_data) {
     ASSERT_RET(-1 < conn_fd);
     ASSERT_RET(NULL != p_data);
+    ASSERT_RET(0 != revents);
 
     conn_t *p_conn = (conn_t *)p_data;
 

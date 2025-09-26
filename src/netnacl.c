@@ -21,10 +21,13 @@
 #include "utils.h"
 
 struct netnacl_t { // NOLINT (clang-diagnostic-padded)
+    size_t key_bytes_sent;
+    size_t key_bytes_recvd;
     size_t hdr_bytes_recvd;
     size_t ct_bytes_recvd;
     uint8_t pk[crypto_box_PUBLICKEYBYTES];
     uint8_t sk[crypto_box_SECRETKEYBYTES];
+    uint8_t peer_pk[crypto_box_PUBLICKEYBYTES];
     uint8_t sym_key[crypto_box_BEFORENMBYTES];
     uint8_t recv_ct[crypto_box_ZEROBYTES + MAX_MESSAGE_LEN];
     uint8_t recv_pt[crypto_box_ZEROBYTES + MAX_MESSAGE_LEN];
@@ -93,36 +96,60 @@ READ_DEV_URANDOM:
     }
 }
 
-// TODO: make this non-blocking too
-int netnacl_wrap(int sock_fd, netnacl_t **pp_nn) {
-    ASSERT_RET(NULL == *pp_nn); // NOLINT (misc-include-cleaner)
-    ASSERT_RET(-1 < sock_fd);
-
-    uint8_t peer_pk[crypto_box_PUBLICKEYBYTES] = {0};
-
-    netnacl_t *p_nn = (netnacl_t *)calloc(1, sizeof(netnacl_t));
-    if (NULL == p_nn) {
+netnacl_t *netnacl_create(int sock_fd) {
+    netnacl_t *p_nn = calloc(1, sizeof(netnacl_t));
+    if (NULL == p_nn) { // NOLINT (misc-include-cleaner)
         LOG(ERR, "netnacl_t calloc");
-        goto CLEANUP;
+    } else {
+        p_nn->sock_fd = sock_fd;
+    }
+    return p_nn;
+}
+
+int netnacl_wrap(netnacl_t *p_nn) {
+    ASSERT_RET(NULL != p_nn);
+
+    if (p_nn->key_bytes_sent == 0) {
+        LOG(ERR, "KEYPAIR");
+        crypto_box_keypair(p_nn->pk, p_nn->sk);
     }
 
-    crypto_box_keypair(p_nn->pk, p_nn->sk);
+    while (p_nn->key_bytes_sent < crypto_box_PUBLICKEYBYTES) {
+        ssize_t sent = send(p_nn->sock_fd, p_nn->pk + p_nn->key_bytes_sent,
+                            crypto_box_PUBLICKEYBYTES - p_nn->key_bytes_sent, MSG_NOSIGNAL);
 
-    if ((crypto_box_PUBLICKEYBYTES != send(sock_fd, p_nn->pk, crypto_box_PUBLICKEYBYTES, 0)) ||
-        (crypto_box_PUBLICKEYBYTES != recv(sock_fd, peer_pk, crypto_box_PUBLICKEYBYTES, 0))) {
-        LOG(ERR, "could not exchange keys");
-        goto CLEANUP;
+        if (-1 == sent) {
+            if ((EAGAIN == errno) || (EWOULDBLOCK == errno)) {
+                return NN_WANT_WRITE;
+            }
+            return NN_ERR;
+        }
+
+        p_nn->key_bytes_sent += (size_t)sent;
     }
 
-    crypto_box_beforenm(p_nn->sym_key, peer_pk, p_nn->sk);
-    p_nn->sock_fd = sock_fd;
+    while (p_nn->key_bytes_recvd < crypto_box_PUBLICKEYBYTES) {
+        ssize_t recvd = recv(p_nn->sock_fd, p_nn->peer_pk + p_nn->key_bytes_recvd,
+                             crypto_box_PUBLICKEYBYTES - p_nn->key_bytes_recvd, 0);
 
-    *pp_nn = p_nn;
+        if (-1 == recvd) {
+            if ((EAGAIN == errno) || (EWOULDBLOCK == errno)) {
+                return NN_WANT_READ;
+            }
+            return NN_ERR;
+        }
+
+        if (0 == recvd) {
+            return NN_ERR;
+        }
+
+        p_nn->key_bytes_recvd += (size_t)recvd;
+    }
+
+    LOG(ERR, "BEFORENM");
+    crypto_box_beforenm(p_nn->sym_key, p_nn->peer_pk, p_nn->sk);
+
     return NN_SUCCESS;
-
-CLEANUP:
-    FREE_AND_NULL(p_nn);
-    return NN_ERR;
 }
 
 ssize_t netnacl_recv(netnacl_t *p_nn, uint8_t *buf, size_t len, int flags) {
@@ -199,7 +226,7 @@ static int recv_hdr(netnacl_t *p_nn, int flags) {
 
         if (-1 == recvd) {
             if ((EAGAIN == errno) || (EWOULDBLOCK == errno)) {
-                return NN_WOULD_BLOCK;
+                return NN_WANT_READ;
             }
             LOG(ERR, "recv");
             return NN_ERR;
@@ -226,7 +253,7 @@ static int recv_ciphertext(netnacl_t *p_nn, int flags) {
         if (-1 == recvd) {
             LOG(ERR, "recv");
             if ((EAGAIN == errno) || (EWOULDBLOCK == errno)) {
-                return NN_WOULD_BLOCK;
+                return NN_WANT_READ;
             }
             return NN_ERR;
         }
@@ -314,7 +341,7 @@ static ssize_t send_ciphertext(netnacl_t *p_nn, size_t len, int flags) {
         if (-1 == sent) {
             LOG(ERR, "send");
             if ((errno == EAGAIN) || (errno == EWOULDBLOCK)) {
-                return NN_WOULD_BLOCK;
+                return NN_WANT_WRITE;
             }
             return NN_ERR;
         }

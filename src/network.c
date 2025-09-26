@@ -60,13 +60,16 @@ int network_connect_to_server(const char *addr, const char *port_str) {
     }
 
     for (struct addrinfo *p_curr = p_gai_result; p_curr != NULL; p_curr = p_curr->ai_next) {
-        sock_fd = socket(p_curr->ai_family, p_curr->ai_socktype, p_curr->ai_protocol);
+        sock_fd = socket(p_curr->ai_family, p_curr->ai_socktype | SOCK_NONBLOCK, p_curr->ai_protocol);
         if (-1 == sock_fd) {
             LOG(ERR, "socket");
             continue;
         }
 
         if (0 != connect(sock_fd, p_curr->ai_addr, p_curr->ai_addrlen)) {
+            if (EINPROGRESS == errno) {
+                break;
+            }
             LOG(ERR, "connect");
             (void)close(sock_fd);
             sock_fd = -1;
@@ -126,7 +129,7 @@ static int get_ipv4_listener(const char *addr_str, uint16_t port) {
         goto CLEANUP;
     }
 
-    server_fd = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    server_fd = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
     if (-1 == server_fd) {
         LOG(ERR, "socket");
         goto CLEANUP;
@@ -173,7 +176,7 @@ static int get_ipv6_listener(const char *addr_str, uint16_t port) {
         goto CLEANUP;
     }
 
-    server_fd = socket(AF_INET6, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    server_fd = socket(AF_INET6, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
     if (-1 == server_fd) {
         LOG(ERR, "socket");
         goto CLEANUP;

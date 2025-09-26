@@ -32,7 +32,7 @@ int buf_send(net_t *p_net, buf_t *p_buf, int flags) {
         }
 
         if (0 > sent) {
-            if ((NN_WOULD_BLOCK == sent) || (EWOULDBLOCK == errno) || (EAGAIN == errno)) {
+            if ((NN_WANT_WRITE == sent) || (EWOULDBLOCK == errno) || (EAGAIN == errno)) {
                 // Unlike buf_recv, we know the size of the data and must make sure it is all sent
                 return PROXY_WOULD_BLOCK;
             }
@@ -78,7 +78,7 @@ int buf_recv(net_t *p_net, buf_t *p_buf, int flags) {
                 return PROXY_DISCONNECT;
             }
 
-            if ((NN_WOULD_BLOCK == recvd) || (EWOULDBLOCK == errno) || (EAGAIN == errno)) {
+            if ((NN_WANT_READ == recvd) || (EWOULDBLOCK == errno) || (EAGAIN == errno)) {
                 if (0 == p_buf->size) {
                     return PROXY_WOULD_BLOCK;
                 }
