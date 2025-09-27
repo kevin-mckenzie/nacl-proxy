@@ -61,9 +61,6 @@ def create_proxy(in_port, out_port, encrypt_in=False, encrypt_out=False) -> Prox
         encrypt_out=encrypt_out,
     )
 
-    print(f"started proxy on {in_port} -> {out_port}")
-
-
     if "valgrind" in proc_args_list:
         time.sleep(1)
     else:
@@ -71,92 +68,86 @@ def create_proxy(in_port, out_port, encrypt_in=False, encrypt_out=False) -> Prox
 
     return proxy
 
-def create_python_http_server(port: int = 8000):
-    run_path = ["python3", "-m", "http.server", "-d", "/tmp", str(port)]
-
-    server = HTTPServer(
-        proc=subprocess.Popen(run_path),
-        addr="127.0.0.1",
-        port=port,
-    )
-
-    time.sleep(0.4)
-
-    return server
-
-
 
 @pytest.fixture(scope="function")
 def single_proxy_unencrypted_fs():
-    port1, port2 = free_port(), free_port()
-    route = [create_proxy(port1, port2)]
-    route.append(create_python_http_server(port2))
+    port = free_port()
+    proxies = [create_proxy(port, 8000)]
 
-    yield route
+    yield proxies
 
-    for node in route:
-        node.proc.terminate()
+    for proxy in proxies:
+        proxy.proc.terminate()
     time.sleep(0.1)
 
 
 @pytest.fixture(scope="function")
 def double_proxy_unencrypted_fs():
-    route = []
-    port1, port2, port3 = free_port(), free_port(), free_port()
-    route.append(create_proxy(port1, port2))
-    route.append(create_proxy(port2, port3))
-    route.append(create_python_http_server(port3))
+    proxies = []
+    port1, port2 = free_port(), free_port()
+    proxies.append(create_proxy(port1, port2))
+    proxies.append(create_proxy(port2, 8000))
 
-    yield route
+    yield proxies
 
-    for node in route:
-        node.proc.terminate()
-    time.sleep(0.1)
-
+    for proxy in proxies:
+        proxy.proc.terminate()
 
 
 @pytest.fixture(scope="function")
 def triple_proxy_unencrypted_fs():
-    route = []
-    port1, port2, port3, port4 = (
-        free_port(),
+    proxies = []
+    port1, port2, port3 = (
         free_port(),
         free_port(),
         free_port(),
     )
 
-    route.append(create_proxy(port1, port2))
-    route.append(create_proxy(port2, port3))
-    route.append(create_proxy(port3, port4))
-    route.append(create_python_http_server(port4))
+    proxies.append(create_proxy(port1, port2))
+    proxies.append(create_proxy(port2, port3))
+    proxies.append(create_proxy(port3, 8000))
 
-    yield route
+    yield proxies
 
-    for node in route:
-        node.proc.terminate()
-    time.sleep(0.1)
-
+    for proxy in proxies:
+        proxy.proc.terminate()
 
 
 @pytest.fixture(scope="function")
 def double_proxy_encrypted_fs():
-    route = []
-    port1, port2, port3 = free_port(), free_port(), free_port()
-    route.append(create_proxy(port1, port2, encrypt_out=True))
-    route.append(create_proxy(port2, port3, encrypt_in=True))
-    route.append(create_python_http_server(port3))
+    proxies = []
+    port1, port2 = free_port(), free_port()
+    proxies.append(create_proxy(port1, port2, encrypt_out=True))
+    proxies.append(create_proxy(port2, 8000, encrypt_in=True))
 
-    yield route
+    yield proxies
 
-    for node in route:
-        node.proc.terminate()
-    time.sleep(0.1)
-
+    for proxy in proxies:
+        proxy.proc.terminate()
 
 
 @pytest.fixture(scope="function")
 def triple_proxy_encrypted_fs():
-    route = []
+    proxies = []
+    port1, port2, port3 = (
+        free_port(),
+        free_port(),
+        free_port(),
+    )
+
+    proxies.append(create_proxy(port1, port2, encrypt_out=True))
+    proxies.append(create_proxy(port2, port3, encrypt_in=True, encrypt_out=True))
+    proxies.append(create_proxy(port3, 8000, encrypt_in=True))
+
+    yield proxies
+
+    for proxy in proxies:
+        proxy.proc.terminate()
+
+
+@pytest.fixture(scope="function")
+def quad_proxy_encrypted_fs():
+    proxies = []
     port1, port2, port3, port4 = (
         free_port(),
         free_port(),
@@ -164,38 +155,27 @@ def triple_proxy_encrypted_fs():
         free_port(),
     )
 
-    route.append(create_proxy(port1, port2, encrypt_out=True))
-    route.append(create_proxy(port2, port3, encrypt_in=True, encrypt_out=True))
-    route.append(create_proxy(port3, port4, encrypt_in=True))
-    route.append(create_python_http_server(port4))
+    proxies.append(create_proxy(port1, port2, encrypt_out=True))
+    proxies.append(create_proxy(port2, port3, encrypt_in=True, encrypt_out=True))
+    proxies.append(create_proxy(port3, port4, encrypt_in=True, encrypt_out=True))
+    proxies.append(create_proxy(port4, 8000, encrypt_in=True))
 
-    yield route
+    yield proxies
 
-    for node in route:
-        node.proc.terminate()
-    time.sleep(0.1)
-
+    for proxy in proxies:
+        proxy.proc.terminate()
 
 
-@pytest.fixture(scope="function")
-def quad_proxy_encrypted_fs():
-    route = []
-    port1, port2, port3, port4, port5 = (
-        free_port(),
-        free_port(),
-        free_port(),
-        free_port(),
-        free_port(),
+@pytest.fixture(scope="session")
+def python_http_server_ss():
+    run_path = ["python3", "-m", "http.server", "-d", "/tmp"]
+
+    server = HTTPServer(
+        proc=subprocess.Popen(run_path),
+        addr="127.0.0.1",
+        port=8000,
     )
+    time.sleep(0.2)
+    yield server
 
-    route.append(create_proxy(port1, port2, encrypt_out=True))
-    route.append(create_proxy(port2, port3, encrypt_in=True, encrypt_out=True))
-    route.append(create_proxy(port3, port4, encrypt_in=True, encrypt_out=True))
-    route.append(create_proxy(port4, port5, encrypt_in=True))
-    route.append(create_python_http_server(port5))
-
-    yield route
-
-    for node in route:
-        node.proc.terminate()
-    time.sleep(0.1)
+    server.proc.terminate()
