@@ -55,6 +55,8 @@ static void signal_handler(int arg) {
 int proxy_run(config_t *p_config) {
     ASSERT_RET(NULL != p_config); // NOLINT (misc-include-cleaner)
 
+    LOG(DBG, "START: %d", getpid());
+
     struct sigaction act = {0};
     act.sa_handler = signal_handler;
     sigaction(SIGINT, &act, NULL);
@@ -155,7 +157,6 @@ static int accept_callback(int listen_fd, short revents, void *p_data) {
         }
     }
 
-    LOG(ERR, "exit");
     return err;
 
 CLEANUP:
@@ -188,15 +189,13 @@ static int pending_connect_callback(int conn_fd, short revents, void *p_data) {
     conn_t *p_conn = (conn_t *)p_data;
     ASSERT_RET(p_conn->server.sock_fd == conn_fd);
 
-    if ((POLLERR | POLLHUP | POLLNVAL) & revents) { // NOLINT (hicpp-signed-bitwise)
-        LOG(ERR, "Pending conn revents: %hx", (unsigned short)revents);
-        err = PROXY_ERR;
+    if (POLLNVAL & revents) {
         goto CLEANUP;
     }
 
-    if (POLLOUT & revents) {
+    if ((POLLERR | POLLHUP | POLLOUT) & revents) { // NOLINT (hicpp-signed-bitwise)
         int sock_err = 1;
-        unsigned int opt_len = sizeof(int);
+        socklen_t opt_len = sizeof(int);
         if (-1 == getsockopt(conn_fd, SOL_SOCKET, SO_ERROR, &sock_err, &opt_len)) {
             LOG(ERR, "getsockopt");
             err = PROXY_ERR;
@@ -287,7 +286,7 @@ static int handshake_callback(int conn_fd, short revents, void *p_data) {
         }
         goto CLEANUP;
     }
-    LOG(ERR, "ready for conn_callback");
+
     return err;
 
 CLEANUP:
@@ -333,15 +332,12 @@ static int do_handshake(conn_t *p_conn, short revents, enum ProxySide side) {
     switch (err) {
     case NN_SUCCESS:
         (void)event_remove(p_net->sock_fd);
-        LOG(ERR, "Added %d", p_net->sock_fd);
         return event_add(p_net->sock_fd, events, p_conn, conn_callback);
         break;
     case NN_WANT_READ:
-        LOG(ERR, "want read %d", p_net->sock_fd);
         return event_modify(p_net->sock_fd, POLLIN);
         break;
     case NN_WANT_WRITE:
-        LOG(ERR, "want write %d", p_net->sock_fd);
         return event_modify(p_net->sock_fd, POLLOUT);
         break;
     default:
@@ -353,8 +349,6 @@ static int conn_callback(int conn_fd, short revents, void *p_data) {
     ASSERT_RET(-1 < conn_fd);
     ASSERT_RET(NULL != p_data);
     ASSERT_RET(0 != revents);
-
-    DEBUG_PRINT("enter");
 
     conn_t *p_conn = (conn_t *)p_data;
 

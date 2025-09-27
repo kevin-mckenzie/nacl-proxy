@@ -15,7 +15,6 @@ import requests
 from fixtures import (
     HTTPServer,
     Proxy,
-    python_http_server_fs,
     single_proxy_unencrypted_fs,
     double_proxy_unencrypted_fs,
     triple_proxy_unencrypted_fs,
@@ -108,11 +107,13 @@ def _sha256_stream(
     ],
     indirect=True,
 )
-def test_get_simple(proxy_configuration, python_http_server_fs):
+def test_get_simple(proxy_configuration):
     proxy: Proxy = proxy_configuration[0]
-    server: HTTPServer = python_http_server_fs
+    server: HTTPServer = proxy_configuration[-1]
 
+    print("going direct")
     direct = requests.get(f"http://{server.addr}:{server.port}", timeout=3)
+    print("going via proxy")
     via_proxy = requests.get(f"http://{proxy.in_addr}:{proxy.in_port}", timeout=3)
 
     assert direct.status_code == 200
@@ -136,9 +137,11 @@ def test_get_simple(proxy_configuration, python_http_server_fs):
     ],
     indirect=True,
 )
-def test_head_matches_get_length(proxy_configuration, python_http_server_fs):
+def test_head_matches_get_length(proxy_configuration):
     proxy: Proxy = proxy_configuration[0]
-    server: HTTPServer = python_http_server_fs
+    server: HTTPServer = proxy_configuration[-1]
+
+
     direct_base, proxy_base = _base_urls(proxy, server)
 
     h_direct = requests.head(direct_base, timeout=3)
@@ -162,9 +165,11 @@ def test_head_matches_get_length(proxy_configuration, python_http_server_fs):
     ],
     indirect=True,
 )
-def test_404_passthrough(proxy_configuration, python_http_server_fs):
+def test_404_passthrough(proxy_configuration):
     proxy: Proxy = proxy_configuration[0]
-    server: HTTPServer = python_http_server_fs
+    server: HTTPServer = proxy_configuration[-1]
+
+
     direct_base, proxy_base = _base_urls(proxy, server)
 
     missing = "/__missing__-" + uuid.uuid4().hex
@@ -187,10 +192,12 @@ def test_404_passthrough(proxy_configuration, python_http_server_fs):
     ],
     indirect=True,
 )
-def test_unsupported_methods_passthrough(proxy_configuration, python_http_server_fs):
+def test_unsupported_methods_passthrough(proxy_configuration):
     """Python static servers usually only implement GET/HEAD—ensure status class parity."""
     proxy: Proxy = proxy_configuration[0]
-    server: HTTPServer = python_http_server_fs
+    server: HTTPServer = proxy_configuration[-1]
+
+
     direct_base, proxy_base = _base_urls(proxy, server)
 
     for method in ("POST", "PUT", "DELETE", "PATCH"):
@@ -216,10 +223,12 @@ def test_unsupported_methods_passthrough(proxy_configuration, python_http_server
     indirect=True,
 )
 def test_content_type_preserved_for_static_files(
-    proxy_configuration, python_http_server_fs
+    proxy_configuration
 ):
     proxy: Proxy = proxy_configuration[0]
-    server: HTTPServer = python_http_server_fs
+    server: HTTPServer = proxy_configuration[-1]
+
+
 
     base = _unique_dir("mimes")
     txt = _write_file(base, "test.txt")
@@ -246,10 +255,12 @@ def test_content_type_preserved_for_static_files(
     ],
     indirect=True,
 )
-def test_large_file_transfer_integrity(proxy_configuration, python_http_server_fs):
+def test_large_file_transfer_integrity(proxy_configuration):
     """~8MB streamed download: byte-for-byte identical via proxy."""
     proxy: Proxy = proxy_configuration[0]
-    server: HTTPServer = python_http_server_fs
+    server: HTTPServer = proxy_configuration[-1]
+
+
 
     base = _unique_dir("big")
     big = _write_file(base, "large.bin", size=8 * 1024 * 1024, binary=True)
@@ -278,9 +289,11 @@ def test_large_file_transfer_integrity(proxy_configuration, python_http_server_f
     ],
     indirect=True,
 )
-def test_range_requests_when_supported(proxy_configuration, python_http_server_fs):
+def test_range_requests_when_supported(proxy_configuration):
     proxy: Proxy = proxy_configuration[0]
-    server: HTTPServer = python_http_server_fs
+    server: HTTPServer = proxy_configuration[-1]
+
+
 
     base = _unique_dir("ranges")
     sample = _write_file(base, "sample.bin", size=512_000, binary=True)
@@ -316,10 +329,12 @@ def test_range_requests_when_supported(proxy_configuration, python_http_server_f
     ],
     indirect=True,
 )
-def test_directory_listing_parity(proxy_configuration, python_http_server_fs):
+def test_directory_listing_parity(proxy_configuration):
     """Ensure directory listings keep filenames intact via proxy."""
     proxy: Proxy = proxy_configuration[0]
-    server: HTTPServer = python_http_server_fs
+    server: HTTPServer = proxy_configuration[-1]
+
+
 
     subdir = _unique_dir("listing")
     (subdir / "a.txt").write_text("A\n", encoding="utf-8")
@@ -352,11 +367,11 @@ def test_directory_listing_parity(proxy_configuration, python_http_server_fs):
     indirect=True,
 )
 def test_concurrent_clients_download_same_file(
-    proxy_configuration, python_http_server_fs
+    proxy_configuration
 ):
     """Many clients concurrently downloading the same file through the proxy."""
     proxy: Proxy = proxy_configuration[0]
-    server: HTTPServer = python_http_server_fs
+    server: HTTPServer = proxy_configuration[-1]
 
     base = _unique_dir("concurrency")
     payload = _write_file(base, "payload.dat", size=2 * 1024 * 1024, binary=True)
@@ -387,10 +402,12 @@ def test_concurrent_clients_download_same_file(
     ],
     indirect=True,
 )
-def test_keepalive_many_small_requests(proxy_configuration, python_http_server_fs):
+def test_keepalive_many_small_requests(proxy_configuration):
     """One TCP session through the proxy, many sequential GETs (keep-alive)."""
     proxy: Proxy = proxy_configuration[0]
-    server: HTTPServer = python_http_server_fs
+    server: HTTPServer = proxy_configuration[-1]
+
+
 
     base = _unique_dir("small")
     files = [_write_file(base, f"f{i}.txt") for i in range(20)]
@@ -417,14 +434,14 @@ def test_keepalive_many_small_requests(proxy_configuration, python_http_server_f
     indirect=True,
 )
 def test_client_abort_does_not_poison_next_request(
-    proxy_configuration, python_http_server_fs
+    proxy_configuration
 ):
     """
     Simulate a client that aborts mid-transfer (close early), then perform a fresh request.
     Proxy should properly clean up and serve subsequent requests.
     """
     proxy: Proxy = proxy_configuration[0]
-    server: HTTPServer = python_http_server_fs
+
 
     base = _unique_dir("abort")
     big = _write_file(base, "abort.bin", size=4 * 1024 * 1024, binary=True)
@@ -457,10 +474,10 @@ def test_client_abort_does_not_poison_next_request(
     ],
     indirect=True,
 )
-def test_query_string_and_encoded_paths(proxy_configuration, python_http_server_fs):
+def test_query_string_and_encoded_paths(proxy_configuration):
     """Ensure proxies preserve path and query intact."""
     proxy: Proxy = proxy_configuration[0]
-    server: HTTPServer = python_http_server_fs
+    server: HTTPServer = proxy_configuration[-1]
 
     base = _unique_dir("query")
     pth = _write_file(base, "sp ace.txt")

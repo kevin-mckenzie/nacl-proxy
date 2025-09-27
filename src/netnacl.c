@@ -110,7 +110,6 @@ int netnacl_wrap(netnacl_t *p_nn) {
     ASSERT_RET(NULL != p_nn);
 
     if (p_nn->key_bytes_sent == 0) {
-        LOG(ERR, "KEYPAIR");
         crypto_box_keypair(p_nn->pk, p_nn->sk);
     }
 
@@ -146,7 +145,6 @@ int netnacl_wrap(netnacl_t *p_nn) {
         p_nn->key_bytes_recvd += (size_t)recvd;
     }
 
-    LOG(ERR, "BEFORENM");
     crypto_box_beforenm(p_nn->sym_key, p_nn->peer_pk, p_nn->sk);
 
     return NN_SUCCESS;
@@ -204,8 +202,6 @@ EXIT:
 ssize_t netnacl_send(netnacl_t *p_nn, const uint8_t *buf, size_t len, int flags) {
     ASSERT_RET(NULL != p_nn);
     ASSERT_RET(NULL != buf);
-
-    LOG(ERR, "ENTER");
 
     // only even try to send len bytes
     if (0 == p_nn->send_buf_len) {

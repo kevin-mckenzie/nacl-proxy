@@ -87,7 +87,6 @@ int network_connect_to_server(const char *addr, const char *port_str) {
 int network_get_listen_socket(const char *addr_str, const char *port_str) {
     ASSERT_RET(NULL != addr_str);
     ASSERT_RET(NULL != port_str);
-    LOG(TRC, "enter");
 
     int server_fd = -1;
 
