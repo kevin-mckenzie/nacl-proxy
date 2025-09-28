@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <errno.h>
 #include <signal.h>
 #include <stdbool.h>
 #include <stdlib.h>
@@ -6,6 +7,8 @@
 #include <unistd.h>
 
 #ifdef __GLIBC__
+#include <asm-generic/errno-base.h>
+#include <asm-generic/errno.h>
 #include <sys/poll.h>
 #else
 #include <poll.h>
@@ -35,10 +38,11 @@ typedef struct { // NOLINT (clang-diagnostic-padded)
 } conn_t;
 
 static int accept_callback(int listen_fd, short revents, void *p_data);
+static int handle_accept(int listen_fd, conn_t *p_conn);
 static int pending_connect_callback(int conn_fd, short revents, void *p_data);
 static int add_connection_events(conn_t *p_conn);
 static int handshake_callback(int conn_fd, short revents, void *p_data);
-static int do_handshake(conn_t *p_conn, short revents, enum ProxySide side);
+static int do_handshake(conn_t *p_conn, enum ProxySide side);
 static int conn_callback(int conn_fd, short revents, void *p_data);
 static int handle_recv(conn_t *p_conn, enum ProxySide side);
 static int handle_send(conn_t *p_conn, enum ProxySide side);
@@ -101,7 +105,6 @@ static int accept_callback(int listen_fd, short revents, void *p_data) {
     }
 
     int err = PROXY_SUCCESS;
-    bool b_added_events = false;
     config_t *p_config = (config_t *)p_data;
     conn_t *p_conn = NULL;
 
@@ -113,46 +116,12 @@ static int accept_callback(int listen_fd, short revents, void *p_data) {
             err = PROXY_ERR;
             goto CLEANUP;
         }
-
-        p_conn->client.sock_fd = accept(listen_fd, NULL, NULL); // NOLINT (android-cloexec-accept)
-        if (-1 == p_conn->client.sock_fd) {
-            LOG(ERR, "accept");
-            // We should not exit for these, continue trying to accept connections
-            if ((ECONNABORTED != errno) && (EAGAIN != errno) && (EWOULDBLOCK != errno)) {
-                err = PROXY_ERR;
-            }
-            goto CLEANUP;
-        }
-
-        err = network_set_sock_nonblocking(p_conn->client.sock_fd);
-        if (err) {
-            goto CLEANUP;
-        }
-
         p_conn->config = p_config;
         p_conn->client.b_encrypted = p_conn->config->b_encrypt_in;
         p_conn->server.b_encrypted = p_conn->config->b_encrypt_out;
 
-        p_conn->server.sock_fd = network_connect_to_server(p_conn->config->server_addr, p_conn->config->server_port);
-        if (-1 == p_conn->server.sock_fd) {
-            LOG(ERR, "Could not connect to server");
-            goto CLEANUP;
-        }
-
-        if (EINPROGRESS == errno) {
-            errno = 0;
-            // Cold path: If connection could not be established immediately defer until it can be
-            err = event_add(p_conn->server.sock_fd, POLLOUT, p_conn, pending_connect_callback);
-        } else {
-            // Hot path if connect worked immediately
-            err = add_connection_events(p_conn);
-        }
-
-        b_added_events = true;
+        err = handle_accept(listen_fd, p_conn);
         if (err) {
-            if (PROXY_MAX_EVENTS == err) {
-                err = PROXY_SUCCESS;
-            }
             goto CLEANUP;
         }
     }
@@ -160,23 +129,72 @@ static int accept_callback(int listen_fd, short revents, void *p_data) {
     return err;
 
 CLEANUP:
-    if (b_added_events) {
-        close_connection(&p_conn);
-    } else {
-        if (-1 != p_conn->server.sock_fd) {
-            close(p_conn->server.sock_fd);
-            p_conn->server.sock_fd = -1;
-        }
 
-        if (-1 != p_conn->client.sock_fd) {
-            close(p_conn->client.sock_fd);
-            p_conn->server.sock_fd = -1;
-        }
-
-        if (NULL != p_conn) {
-            FREE_AND_NULL(p_conn);
-        }
+    if (NULL != p_conn) {
+        FREE_AND_NULL(p_conn);
     }
+
+    // Listener should keep running if these errors happened, otherwise entire proxy will exit.
+    if ((PROXY_MAX_EVENTS == err) || (PROXY_INCOMPLETE_ACCEPT == err) || (PROXY_CONNECT_ERR == err)) {
+        err = PROXY_SUCCESS;
+    }
+
+    return err;
+}
+
+static int handle_accept(int listen_fd, conn_t *p_conn) {
+    ASSERT_RET(NULL != p_conn);
+
+    int err = PROXY_SUCCESS;
+
+    p_conn->client.sock_fd = accept(listen_fd, NULL, NULL); // NOLINT (android-cloexec-accept)
+    if (-1 == p_conn->client.sock_fd) {
+        LOG(ERR, "accept");
+        // We should not exit for these, continue trying to accept connections
+        if ((ECONNABORTED == errno) && (EAGAIN == errno) && (EWOULDBLOCK == errno)) {
+            err = PROXY_INCOMPLETE_ACCEPT;
+        } else {
+            err = PROXY_ERR;
+        }
+        goto CLEANUP;
+    }
+
+    err = network_set_sock_nonblocking(p_conn->client.sock_fd);
+    if (err) {
+        goto CLEANUP;
+    }
+
+    p_conn->server.sock_fd = network_connect_to_server(p_conn->config->server_addr, p_conn->config->server_port);
+    if (-1 == p_conn->server.sock_fd) {
+        LOG(ERR, "Could not connect to server");
+        // TODO: check errnos here?
+        err = PROXY_CONNECT_ERR;
+        goto CLEANUP;
+    }
+
+    if (EINPROGRESS == errno) {
+        errno = 0;
+        // Cold path: If connection could not be established immediately defer until it can be
+        err = event_add(p_conn->server.sock_fd, POLLOUT, p_conn, pending_connect_callback);
+    } else {
+        // Hot path if connect worked immediately
+        err = add_connection_events(p_conn);
+    }
+
+    return err;
+
+CLEANUP:
+
+    if (-1 != p_conn->server.sock_fd) {
+        close(p_conn->server.sock_fd);
+        p_conn->server.sock_fd = -1;
+    }
+
+    if (-1 != p_conn->client.sock_fd) {
+        close(p_conn->client.sock_fd);
+        p_conn->client.sock_fd = -1;
+    }
+
     return err;
 }
 
@@ -231,29 +249,27 @@ static int add_connection_events(conn_t *p_conn) {
 
     if (p_conn->client.b_encrypted) {
         err = event_add(p_conn->client.sock_fd, POLLOUT, p_conn, handshake_callback);
-        if (err) {
-            return err;
-        }
     } else {
         err = event_add(p_conn->client.sock_fd, POLLIN, p_conn, conn_callback);
-        if (err) {
-            return err;
-        }
     }
+
+    if (err) {
+        return err;
+    }
+
     p_conn->ref++;
 
     if (p_conn->server.b_encrypted) {
         err = event_add(p_conn->server.sock_fd, POLLOUT, p_conn, handshake_callback);
-        if (err) {
-            return err;
-        }
     } else {
         err = event_add(p_conn->server.sock_fd, POLLIN, p_conn, conn_callback);
-        if (err) {
-            return err;
-        }
     }
-    p_conn->ref++;
+
+    if (err) {
+        (void)event_remove(p_conn->client.sock_fd);
+    } else {
+        p_conn->ref++;
+    }
 
     return err;
 }
@@ -273,9 +289,9 @@ static int handshake_callback(int conn_fd, short revents, void *p_data) {
     }
 
     if (conn_fd == p_conn->client.sock_fd) {
-        err = do_handshake(p_conn, revents, CLIENT);
+        err = do_handshake(p_conn, CLIENT);
     } else if (conn_fd == p_conn->server.sock_fd) {
-        err = do_handshake(p_conn, revents, SERVER);
+        err = do_handshake(p_conn, SERVER);
     } else {
         err = PROXY_ERR;
     }
@@ -295,13 +311,13 @@ CLEANUP:
     return err;
 }
 
-static int do_handshake(conn_t *p_conn, short revents, enum ProxySide side) {
+static int do_handshake(conn_t *p_conn, enum ProxySide side) {
     ASSERT_RET(NULL != p_conn);
 
     short events = POLLIN;
     net_t *p_net = NULL;
 
-    switch (side) {
+    switch (side) { // NOLINT (clang-diagnostic-switch-enum)
     case CLIENT:
         p_net = &p_conn->client;
         if (0 < p_conn->client_send_buf.size) {
@@ -333,13 +349,10 @@ static int do_handshake(conn_t *p_conn, short revents, enum ProxySide side) {
     case NN_SUCCESS:
         (void)event_remove(p_net->sock_fd);
         return event_add(p_net->sock_fd, events, p_conn, conn_callback);
-        break;
     case NN_WANT_READ:
         return event_modify(p_net->sock_fd, POLLIN);
-        break;
     case NN_WANT_WRITE:
         return event_modify(p_net->sock_fd, POLLOUT);
-        break;
     default:
         return err;
     }

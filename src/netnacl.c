@@ -97,7 +97,7 @@ READ_DEV_URANDOM:
 }
 
 netnacl_t *netnacl_create(int sock_fd) {
-    netnacl_t *p_nn = calloc(1, sizeof(netnacl_t));
+    netnacl_t *p_nn = (netnacl_t *)calloc(1, sizeof(netnacl_t));
     if (NULL == p_nn) { // NOLINT (misc-include-cleaner)
         LOG(ERR, "netnacl_t calloc");
     } else {

@@ -1,5 +1,6 @@
 #include <arpa/inet.h>
 #include <assert.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <netdb.h>
 #include <netinet/in.h>
@@ -9,6 +10,10 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <unistd.h>
+
+#ifdef __GLIBC__
+#include <asm-generic/errno.h>
+#endif
 
 #include "errors.h"
 #include "log.h"
@@ -60,6 +65,7 @@ int network_connect_to_server(const char *addr, const char *port_str) {
     }
 
     for (struct addrinfo *p_curr = p_gai_result; p_curr != NULL; p_curr = p_curr->ai_next) {
+        // NOLINTNEXTLINE (hiccp-signed-bitwise)
         sock_fd = socket(p_curr->ai_family, p_curr->ai_socktype | SOCK_NONBLOCK, p_curr->ai_protocol);
         if (-1 == sock_fd) {
             LOG(ERR, "socket");
