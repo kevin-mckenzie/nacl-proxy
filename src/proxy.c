@@ -38,22 +38,43 @@ typedef struct { // NOLINT (clang-diagnostic-padded)
 } conn_t;
 
 static int accept_callback(int listen_fd, short revents, void *p_data);
+/** Accept event callback: Allocates a new connection context and handles incoming client connections. */
+
 static int handle_accept(int listen_fd, conn_t *p_conn);
+/** Accepts a client connection and initiates outgoing server connection. Cleans up on error. */
+
 static int pending_connect_callback(int conn_fd, short revents, void *p_data);
+/** Handles completion of non-blocking server connect. Cleans up on error. */
+
 static int add_connection_events(conn_t *p_conn);
+/** Registers POLLIN/POLLOUT events for both client and server sockets, depending on encryption. */
+
 static int handshake_callback(int conn_fd, short revents, void *p_data);
+/** Handles handshake for encrypted connections, switching to data events after success. */
+
 static int do_handshake(conn_t *p_conn, enum ProxySide side);
+/** Performs key exchange and sets up event for encrypted communication. */
+
 static int conn_callback(int conn_fd, short revents, void *p_data);
+/** Main connection event handler: routes to recv/send logic and manages disconnects. */
+
 static int handle_recv(conn_t *p_conn, enum ProxySide side);
+/** Receives data from one side, buffers for forwarding, and manages disconnect logic. */
+
 static int handle_send(conn_t *p_conn, enum ProxySide side);
+/** Sends buffered data to one side, manages event state and disconnect logic. */
+
 static void close_connection(conn_t **pp_conn);
+/** Removes events, closes sockets, and frees connection context. */
+
 static void free_connection(conn_t *p_conn);
+/** Frees connection context, including encryption state, when refcount reaches zero. */
 
 volatile sig_atomic_t g_run_flag = 1; // NOLINT
 
 static void signal_handler(int arg) {
     (void)arg;
-    g_run_flag = 0;
+    g_run_flag = 0; // Stop event loop on signal
 }
 
 int proxy_run(config_t *p_config) {
@@ -95,10 +116,12 @@ CLEANUP:
 }
 
 static int accept_callback(int listen_fd, short revents, void *p_data) {
+    // Accept new client connection and allocate connection context.
     ASSERT_RET(-1 < listen_fd);
     ASSERT_RET(0 != revents);
     ASSERT_RET(NULL != p_data);
 
+    // If listener socket has error/hangup, log and return error.
     if ((POLLERR | POLLHUP | POLLNVAL | POLLOUT) & revents) { // NOLINT (hicpp-signed-bitwise)
         LOG(ERR, "listener revents: %hx", (unsigned short)revents);
         return PROXY_ERR;
@@ -143,6 +166,7 @@ CLEANUP:
 }
 
 static int handle_accept(int listen_fd, conn_t *p_conn) {
+    // Accept client and connect to server. Clean up on error.
     ASSERT_RET(NULL != p_conn);
 
     int err = PROXY_SUCCESS;
@@ -150,7 +174,7 @@ static int handle_accept(int listen_fd, conn_t *p_conn) {
     p_conn->client.sock_fd = accept(listen_fd, NULL, NULL); // NOLINT (android-cloexec-accept)
     if (-1 == p_conn->client.sock_fd) {
         LOG(ERR, "accept");
-        // We should not exit for these, continue trying to accept connections
+        // Don't exit for transient errors, just try again later.
         if ((ECONNABORTED == errno) && (EAGAIN == errno) && (EWOULDBLOCK == errno)) {
             err = PROXY_INCOMPLETE_ACCEPT;
         } else {
@@ -167,17 +191,17 @@ static int handle_accept(int listen_fd, conn_t *p_conn) {
     p_conn->server.sock_fd = network_connect_to_server(p_conn->config->server_addr, p_conn->config->server_port);
     if (-1 == p_conn->server.sock_fd) {
         LOG(ERR, "Could not connect to server");
-        // TODO: check errnos here?
+        // Could not connect to server, clean up and continue accepting.
         err = PROXY_CONNECT_ERR;
         goto CLEANUP;
     }
 
     if (EINPROGRESS == errno) {
         errno = 0;
-        // Cold path: If connection could not be established immediately defer until it can be
+        // Connection is pending, register POLLOUT to complete handshake later.
         err = event_add(p_conn->server.sock_fd, POLLOUT, p_conn, pending_connect_callback);
     } else {
-        // Hot path if connect worked immediately
+        // Connection established immediately, register data events.
         err = add_connection_events(p_conn);
     }
 
@@ -199,6 +223,7 @@ CLEANUP:
 }
 
 static int pending_connect_callback(int conn_fd, short revents, void *p_data) {
+    // Complete non-blocking connect and register data events.
     ASSERT_RET(-1 < conn_fd);
     ASSERT_RET(0 != revents);
     ASSERT_RET(NULL != p_data);
@@ -225,7 +250,7 @@ static int pending_connect_callback(int conn_fd, short revents, void *p_data) {
             goto CLEANUP;
         }
 
-        // 0 == sock_err == connection established (according to connect(2))
+        // Connection established, switch to normal events.
         (void)event_remove(conn_fd); // Avoid duplicate event error
         err = add_connection_events(p_conn);
         if (err) {
@@ -241,12 +266,14 @@ CLEANUP:
 }
 
 static int add_connection_events(conn_t *p_conn) {
+    // Register POLLIN/POLLOUT events for both client and server sockets.
     ASSERT_RET(NULL != p_conn);
     ASSERT_RET(-1 < p_conn->client.sock_fd);
     ASSERT_RET(-1 < p_conn->server.sock_fd);
 
     int err = PROXY_SUCCESS;
 
+    // If encrypted, start with handshake (POLLOUT), else start with data (POLLIN).
     if (p_conn->client.b_encrypted) {
         err = event_add(p_conn->client.sock_fd, POLLOUT, p_conn, handshake_callback);
     } else {
@@ -275,6 +302,7 @@ static int add_connection_events(conn_t *p_conn) {
 }
 
 static int handshake_callback(int conn_fd, short revents, void *p_data) {
+    // Handles handshake for encrypted connections, switching to data events after success.
     ASSERT_RET(-1 < conn_fd);
     ASSERT_RET(0 != revents);
     ASSERT_RET(NULL != p_data);
@@ -312,6 +340,7 @@ CLEANUP:
 }
 
 static int do_handshake(conn_t *p_conn, enum ProxySide side) {
+    // Perform key exchange and set up event for encrypted communication.
     ASSERT_RET(NULL != p_conn);
 
     short events = POLLIN;
@@ -359,6 +388,7 @@ static int do_handshake(conn_t *p_conn, enum ProxySide side) {
 }
 
 static int conn_callback(int conn_fd, short revents, void *p_data) {
+    // Main connection event handler: routes to recv/send logic and manages disconnects.
     ASSERT_RET(-1 < conn_fd);
     ASSERT_RET(NULL != p_data);
     ASSERT_RET(0 != revents);
@@ -405,6 +435,7 @@ static int conn_callback(int conn_fd, short revents, void *p_data) {
 }
 
 static int handle_recv(conn_t *p_conn, enum ProxySide side) {
+    // Receives data from one side, buffers for forwarding, and manages disconnect logic.
     ASSERT_RET(NULL != p_conn);
     ASSERT_RET((CLIENT == side) || (SERVER == side));
 
@@ -422,7 +453,7 @@ static int handle_recv(conn_t *p_conn, enum ProxySide side) {
         p_buf = &p_conn->client_send_buf;
     }
 
-    // We got POLLIN to recv more data but the other socket has not sent it yet; so return to let it send
+    // If we have buffered data waiting to send, don't receive more until it's sent.
     if (0 != p_buf->size) {
         return PROXY_SUCCESS;
     }
@@ -430,7 +461,7 @@ static int handle_recv(conn_t *p_conn, enum ProxySide side) {
     int err = buf_recv(p_net, p_buf, 0);
 
     if ((PROXY_SUCCESS == err) || ((PROXY_DISCONNECT == err) && (0 != p_buf->size))) {
-        // If this side disconnects but we also got data, we need to make make sure the data still gets sent.
+        // If this side disconnects but we also got data, we need to make sure the data still gets sent.
         // Close this side's socket then mark the other socket for sending as normal.
         if (PROXY_DISCONNECT == err) {
             LOG(INF, "Disconnect on [%d]", p_net->sock_fd);
@@ -460,6 +491,7 @@ static int handle_recv(conn_t *p_conn, enum ProxySide side) {
 }
 
 static int handle_send(conn_t *p_conn, enum ProxySide side) {
+    // Sends buffered data to one side, manages event state and disconnect logic.
     ASSERT_RET(NULL != p_conn);
     ASSERT_RET((CLIENT == side) || (SERVER == side));
 
@@ -480,6 +512,7 @@ static int handle_send(conn_t *p_conn, enum ProxySide side) {
     int err = buf_send(p_conn_net, p_buf, MSG_NOSIGNAL);
 
     if (0 == err) {
+        // If peer is disconnected, close both ends after sending buffered data.
         if (-1 == p_mod_net->sock_fd) {
             LOG(INF, "After completing pending send, closing [%d] due to prior peer disconnect", p_mod_net->sock_fd);
             close_connection(&p_conn);
@@ -498,6 +531,7 @@ static int handle_send(conn_t *p_conn, enum ProxySide side) {
 }
 
 static void close_connection(conn_t **pp_conn) {
+    // Remove events, close sockets, and free connection context.
     assert(NULL != pp_conn);
     assert(NULL != *pp_conn);
 
@@ -520,7 +554,7 @@ static void close_connection(conn_t **pp_conn) {
 }
 
 static void free_connection(conn_t *p_conn) {
-
+    // Frees connection context, including encryption state, when refcount reaches zero.
     if (NULL != p_conn) {
         if (1 >= p_conn->ref) {
             if (NULL != p_conn->client.netnacl) {

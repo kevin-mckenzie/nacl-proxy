@@ -41,16 +41,32 @@ struct netnacl_t { // NOLINT (clang-diagnostic-padded)
 };
 
 static int recv_hdr(netnacl_t *p_nn, int flags);
+/** Receives message header, handling partial reads and disconnects. */
+
 static int recv_ciphertext(netnacl_t *p_nn, int flags);
+/** Receives ciphertext for a message, handling partial reads and disconnects. */
+
 static int decrypt_ciphertext(netnacl_t *p_nn);
+/** Decrypts received ciphertext and prepares plaintext buffer. */
+
 static ssize_t copy_plaintext_to_buffer(netnacl_t *p_nn, uint8_t *buf, size_t len);
+/** Copies decrypted plaintext to user buffer, resets state when done. */
+
 static void encrypt_plaintext(netnacl_t *p_nn, const uint8_t *buf, size_t len);
+/** Encrypts plaintext and prepares send buffer for transmission. */
+
 static ssize_t send_ciphertext(netnacl_t *p_nn, size_t len, int flags);
+/** Sends ciphertext buffer, handling partial writes and resetting state. */
 
 static int g_urandom = -1; // NOLINT (cppcoreguidelines-avoid-non-const-global-variables)
 
+/**
+ * @brief Fill a buffer with cryptographically secure random bytes.
+ *
+ * Uses getrandom() if available, otherwise falls back to /dev/urandom.
+ * Exits the process if no entropy source is available.
+ */
 void randombytes(uint8_t *buf, uint64_t sz) { // NOLINT (clang-diagnostic-missing-prototypes)
-
     size_t total_read_sz = 0;
     while (total_read_sz < sz) {
         ssize_t read_sz = getrandom(buf + total_read_sz, sz - total_read_sz, 0);
@@ -58,13 +74,13 @@ void randombytes(uint8_t *buf, uint64_t sz) { // NOLINT (clang-diagnostic-missin
         if (-1 == read_sz) {
             LOG(ERR, "getrandom");
             if (EINTR == errno) {
-                continue;
+                continue; // Retry if interrupted
             }
 
             if (ENOSYS == errno) {
-                goto READ_DEV_URANDOM;
+                goto READ_DEV_URANDOM; // Fallback if getrandom is not available
             }
-            _exit(1);
+            _exit(1); // Fatal error, cannot continue
         }
 
         total_read_sz += (size_t)read_sz;
@@ -85,11 +101,11 @@ READ_DEV_URANDOM:
 
         if (-1 == read_sz) {
             if (EINTR == errno) {
-                continue;
+                continue; // Retry if interrupted
             }
 
             LOG(ERR, "read: /dev/urandom");
-            _exit(1);
+            _exit(1); // Fatal error, cannot continue
         }
 
         total_read_sz += (size_t)read_sz;
@@ -110,16 +126,17 @@ int netnacl_wrap(netnacl_t *p_nn) {
     ASSERT_RET(NULL != p_nn);
 
     if (p_nn->key_bytes_sent == 0) {
-        crypto_box_keypair(p_nn->pk, p_nn->sk);
+        crypto_box_keypair(p_nn->pk, p_nn->sk); // Generate keypair only once
     }
 
+    // Send our public key, handling partial writes
     while (p_nn->key_bytes_sent < crypto_box_PUBLICKEYBYTES) {
         ssize_t sent = send(p_nn->sock_fd, p_nn->pk + p_nn->key_bytes_sent,
                             crypto_box_PUBLICKEYBYTES - p_nn->key_bytes_sent, MSG_NOSIGNAL);
 
         if (-1 == sent) {
             if ((EAGAIN == errno) || (EWOULDBLOCK == errno)) {
-                return NN_WANT_WRITE;
+                return NN_WANT_WRITE; // Wait for socket to be writable
             }
             return NN_ERR;
         }
@@ -127,24 +144,26 @@ int netnacl_wrap(netnacl_t *p_nn) {
         p_nn->key_bytes_sent += (size_t)sent;
     }
 
+    // Receive peer's public key, handling partial reads
     while (p_nn->key_bytes_recvd < crypto_box_PUBLICKEYBYTES) {
         ssize_t recvd = recv(p_nn->sock_fd, p_nn->peer_pk + p_nn->key_bytes_recvd,
                              crypto_box_PUBLICKEYBYTES - p_nn->key_bytes_recvd, 0);
 
         if (-1 == recvd) {
             if ((EAGAIN == errno) || (EWOULDBLOCK == errno)) {
-                return NN_WANT_READ;
+                return NN_WANT_READ; // Wait for socket to be readable
             }
             return NN_ERR;
         }
 
         if (0 == recvd) {
-            return NN_ERR;
+            return NN_ERR; // Remote closed connection
         }
 
         p_nn->key_bytes_recvd += (size_t)recvd;
     }
 
+    // Derive shared symmetric key for encryption
     crypto_box_beforenm(p_nn->sym_key, p_nn->peer_pk, p_nn->sk);
 
     return NN_SUCCESS;
@@ -158,6 +177,7 @@ ssize_t netnacl_recv(netnacl_t *p_nn, uint8_t *buf, size_t len, int flags) {
 
     ssize_t ret = 0;
 
+    // Receive header if needed
     if (p_nn->hdr_bytes_recvd < sizeof(hdr_t)) {
         ret = recv_hdr(p_nn, flags);
         LOG(IO, "recvd %zu / %zu of header", p_nn->hdr_bytes_recvd, sizeof(hdr_t));
@@ -166,6 +186,7 @@ ssize_t netnacl_recv(netnacl_t *p_nn, uint8_t *buf, size_t len, int flags) {
         }
     }
 
+    // Receive ciphertext if needed
     if ((p_nn->hdr_bytes_recvd == sizeof(hdr_t)) && (p_nn->ct_bytes_recvd < p_nn->recv_hdr.len)) {
         ret = recv_ciphertext(p_nn, flags);
         LOG(IO, "recvd %zu / %hu of ciphertext", p_nn->ct_bytes_recvd, p_nn->recv_hdr.len);
@@ -174,6 +195,7 @@ ssize_t netnacl_recv(netnacl_t *p_nn, uint8_t *buf, size_t len, int flags) {
         }
     }
 
+    // Decrypt ciphertext if needed
     if ((p_nn->hdr_bytes_recvd == sizeof(hdr_t)) && (p_nn->ct_bytes_recvd == p_nn->recv_hdr.len) &&
         (0 == p_nn->recv_pt_len)) {
         ret = decrypt_ciphertext(p_nn);
@@ -182,6 +204,7 @@ ssize_t netnacl_recv(netnacl_t *p_nn, uint8_t *buf, size_t len, int flags) {
         }
     }
 
+    // Copy plaintext to user buffer
     if ((p_nn->hdr_bytes_recvd == sizeof(hdr_t)) && (p_nn->ct_bytes_recvd == p_nn->recv_hdr.len) &&
         (0 < p_nn->recv_pt_len)) {
         ret = copy_plaintext_to_buffer(p_nn, buf, len);
@@ -203,9 +226,9 @@ ssize_t netnacl_send(netnacl_t *p_nn, const uint8_t *buf, size_t len, int flags)
     ASSERT_RET(NULL != p_nn);
     ASSERT_RET(NULL != buf);
 
-    // only even try to send len bytes
+    // Only even try to send len bytes
     if (0 == p_nn->send_buf_len) {
-        encrypt_plaintext(p_nn, buf, len);
+        encrypt_plaintext(p_nn, buf, len); // Prepare send buffer
     }
 
     ssize_t sent = 0;
@@ -217,7 +240,7 @@ ssize_t netnacl_send(netnacl_t *p_nn, const uint8_t *buf, size_t len, int flags)
 }
 
 static int recv_hdr(netnacl_t *p_nn, int flags) {
-
+    // Receives message header, handling partial reads and disconnects.
     while (p_nn->hdr_bytes_recvd < sizeof(hdr_t)) {
         ssize_t recvd = recv(p_nn->sock_fd, (uint8_t *)&p_nn->recv_hdr + p_nn->hdr_bytes_recvd,
                              sizeof(hdr_t) - p_nn->hdr_bytes_recvd, flags);
@@ -238,12 +261,13 @@ static int recv_hdr(netnacl_t *p_nn, int flags) {
         p_nn->hdr_bytes_recvd += (size_t)recvd;
     }
 
-    p_nn->recv_hdr.len = ntohs(p_nn->recv_hdr.len);
+    p_nn->recv_hdr.len = ntohs(p_nn->recv_hdr.len); // Convert length to host order
 
     return NN_SUCCESS;
 }
 
 static int recv_ciphertext(netnacl_t *p_nn, int flags) {
+    // Receives ciphertext for a message, handling partial reads and disconnects.
     while (p_nn->ct_bytes_recvd < p_nn->recv_hdr.len) {
         ssize_t recvd =
             recv(p_nn->sock_fd, p_nn->recv_ct + p_nn->ct_bytes_recvd, p_nn->recv_hdr.len - p_nn->ct_bytes_recvd, flags);
@@ -270,6 +294,7 @@ static int recv_ciphertext(netnacl_t *p_nn, int flags) {
 }
 
 static int decrypt_ciphertext(netnacl_t *p_nn) {
+    // Decrypts received ciphertext and prepares plaintext buffer.
     ASSERT_RET(NULL != p_nn);
     LOG(DBG, "decrypting %hu bytes of ciphertext", p_nn->recv_hdr.len);
 
@@ -280,12 +305,13 @@ static int decrypt_ciphertext(netnacl_t *p_nn) {
     }
 
     p_nn->recv_pt_len = p_nn->recv_hdr.len - crypto_box_ZEROBYTES;
-    memmove(p_nn->recv_pt, p_nn->recv_pt + crypto_box_ZEROBYTES, p_nn->recv_pt_len);
+    memmove(p_nn->recv_pt, p_nn->recv_pt + crypto_box_ZEROBYTES, p_nn->recv_pt_len); // Remove padding
 
     return NN_SUCCESS;
 }
 
 static ssize_t copy_plaintext_to_buffer(netnacl_t *p_nn, uint8_t *buf, size_t len) {
+    // Copies decrypted plaintext to user buffer, resets state when done.
     ASSERT_RET(NULL != p_nn);
     ASSERT_RET(NULL != buf);
 
@@ -296,6 +322,7 @@ static ssize_t copy_plaintext_to_buffer(netnacl_t *p_nn, uint8_t *buf, size_t le
     p_nn->recv_pt_pos += read_sz;
     ASSERT_RET(p_nn->recv_pt_pos <= p_nn->recv_pt_len);
     if (p_nn->recv_pt_pos == p_nn->recv_pt_len) {
+        // Reset state for next message
         memset(&p_nn->recv_hdr, 0, sizeof(hdr_t));
         memset(p_nn->recv_pt, 0, crypto_box_ZEROBYTES + MAX_MESSAGE_LEN);
         memset(p_nn->recv_ct, 0, crypto_box_ZEROBYTES + MAX_MESSAGE_LEN);
@@ -309,27 +336,29 @@ static ssize_t copy_plaintext_to_buffer(netnacl_t *p_nn, uint8_t *buf, size_t le
 }
 
 static void encrypt_plaintext(netnacl_t *p_nn, const uint8_t *buf, size_t len) {
+    // Encrypts plaintext and prepares send buffer for transmission.
     assert(NULL != p_nn);
     assert(NULL != buf);
 
     hdr_t send_hdr = {0};
     uint8_t pt_buf[crypto_box_ZEROBYTES + MAX_MESSAGE_LEN] = {0};
 
-    randombytes(send_hdr.nonce, crypto_box_NONCEBYTES);
+    randombytes(send_hdr.nonce, crypto_box_NONCEBYTES); // Always use a fresh nonce
     size_t pt_len = MIN(len, MAX_MESSAGE_LEN);
     LOG(DBG, "encrypting %zu / %zu bytes of plaintext", pt_len, len);
     size_t padded_pt_len = pt_len + crypto_box_ZEROBYTES;
     send_hdr.len = (uint16_t)pt_len + crypto_box_ZEROBYTES;
     p_nn->send_buf_len = send_hdr.len + sizeof(hdr_t);
 
-    memcpy(pt_buf + crypto_box_ZEROBYTES, buf, pt_len);
+    memcpy(pt_buf + crypto_box_ZEROBYTES, buf, pt_len); // Pad plaintext as required by NaCl
     crypto_box_afternm(p_nn->send_buf + sizeof(hdr_t), pt_buf, padded_pt_len, send_hdr.nonce, p_nn->sym_key);
 
-    send_hdr.len = htons(send_hdr.len);
+    send_hdr.len = htons(send_hdr.len); // Store length in network order
     memcpy(p_nn->send_buf, &send_hdr, sizeof(hdr_t));
 }
 
 static ssize_t send_ciphertext(netnacl_t *p_nn, size_t len, int flags) {
+    // Sends ciphertext buffer, handling partial writes and resetting state.
     ASSERT_RET(NULL != p_nn);
 
     while (p_nn->send_buf_pos < p_nn->send_buf_len) {
@@ -349,6 +378,7 @@ static ssize_t send_ciphertext(netnacl_t *p_nn, size_t len, int flags) {
         p_nn->send_buf_pos += (uint16_t)sent;
     }
 
+    // Reset state after sending the message
     memset(p_nn->send_buf, 0, p_nn->send_buf_len);
     p_nn->send_buf_len = 0;
     p_nn->send_buf_pos = 0;

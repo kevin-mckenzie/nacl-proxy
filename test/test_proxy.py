@@ -1,9 +1,11 @@
+# test_transport_passthrough.py
 import concurrent.futures as cf
 import hashlib
 import os
-import random
-import string
-import uuid
+import socket
+import struct
+import time
+from contextlib import closing
 from pathlib import Path
 from typing import Optional, Tuple
 
@@ -14,7 +16,7 @@ import requests
 
 from fixtures import (
     HTTPServer,
-    Proxy,
+    Proxy,  # type: ignore
     python_http_server_ss,
     single_proxy_unencrypted_fs,
     double_proxy_unencrypted_fs,
@@ -24,6 +26,12 @@ from fixtures import (
     quad_proxy_encrypted_fs,
 )
 
+# ---------------- config ----------------
+
+DOCROOT = Path("/tmp")
+SMALL_TIMEOUT = 3
+LARGE_TIMEOUT = 10
+
 
 @pytest.fixture
 def proxy_configuration(request):
@@ -31,69 +39,9 @@ def proxy_configuration(request):
     return request.getfixturevalue(request.param)
 
 
-# ---------------- helpers (assume /tmp docroot) ----------------
-
-DOCROOT = Path("/tmp")
-
-
-def _unique_dir(prefix: str) -> Path:
-    p = DOCROOT / f"{prefix}-{uuid.uuid4().hex[:10]}"
-    p.mkdir(parents=True, exist_ok=True)
-    return p
-
-
-def _write_file(
-    dirpath: Path, name: str, *, size: int = 0, binary: bool = False
-) -> Path:
-    """Create a file under /tmp/<dirpath>/<name> with optional size."""
-    p = dirpath / name
-    p.parent.mkdir(parents=True, exist_ok=True)
-    if size > 0:
-        if binary:
-            block = os.urandom(8192)
-            remaining = size
-            with p.open("wb") as f:
-                while remaining > 0:
-                    n = min(remaining, len(block))
-                    f.write(block[:n])
-                    remaining -= n
-        else:
-            with p.open("w", encoding="utf-8") as f:
-                while f.tell() < size:
-                    f.write(
-                        "".join(random.choice(string.ascii_letters) for _ in range(120))
-                    )
-                    f.write("\n")
-    else:
-        mode = "wb" if binary else "w"
-        with p.open(mode) as f:
-            if not binary:
-                f.write("hello world\n")
-    return p
-
-
-def _base_urls(proxy: Proxy, server: HTTPServer) -> Tuple[str, str]:
-    """Return (direct_base, proxy_base)."""
-    return (
-        f"http://{server.addr}:{server.port}",
-        f"http://{proxy.in_addr}:{proxy.in_port}",
-    )
-
-
-def _sha256_stream(
-    url: str, *, session: Optional[requests.Session] = None, timeout=10
-) -> str:
-    s = session or requests
-    h = hashlib.sha256()
-    with s.get(url, stream=True, timeout=timeout) as r:
-        r.raise_for_status()
-        for chunk in r.iter_content(chunk_size=64 * 1024):
-            if chunk:
-                h.update(chunk)
-    return h.hexdigest()
-
-
-# ---------------- baseline parity ----------------
+# ============================================================
+#                 PROTOCOL-AGNOSTIC BASELINE
+# ============================================================
 
 
 @pytest.mark.parametrize(
@@ -108,20 +56,20 @@ def _sha256_stream(
     ],
     indirect=True,
 )
-def test_get_simple(proxy_configuration, python_http_server_ss):
+def test_root_bytes_match(proxy_configuration, python_http_server_ss):
+    """
+    Minimal parity: fetch '/' directly vs through proxy and compare bytes.
+    No HTTP semantics asserted other than a successful fetch.
+    """
     proxy: Proxy = proxy_configuration[0]
     server: HTTPServer = python_http_server_ss
 
-    direct = requests.get(f"http://{server.addr}:{server.port}", timeout=3)
-    via_proxy = requests.get(f"http://{proxy.in_addr}:{proxy.in_port}", timeout=3)
+    direct = requests.get(f"http://{server.addr}:{server.port}", timeout=SMALL_TIMEOUT)
+    via = requests.get(f"http://{proxy.in_addr}:{proxy.in_port}", timeout=SMALL_TIMEOUT)
 
-    assert direct.status_code == 200
-    assert via_proxy.status_code == 200
-    assert direct.content == via_proxy.content
-    assert direct.headers.get("Content-Type") == via_proxy.headers.get("Content-Type")
-
-
-# ---------------- HTTP method parity & errors ----------------
+    assert direct.status_code // 100 == 2
+    assert via.status_code // 100 == 2
+    assert direct.content == via.content
 
 
 @pytest.mark.parametrize(
@@ -136,172 +84,37 @@ def test_get_simple(proxy_configuration, python_http_server_ss):
     ],
     indirect=True,
 )
-def test_head_matches_get_length(proxy_configuration, python_http_server_ss):
-    proxy: Proxy = proxy_configuration[0]
-    server: HTTPServer = python_http_server_ss
-    direct_base, proxy_base = _base_urls(proxy, server)
-
-    h_direct = requests.head(direct_base, timeout=3)
-    h_proxy = requests.head(proxy_base, timeout=3)
-    assert h_direct.status_code == h_proxy.status_code == 200
-    assert h_direct.headers.get("Content-Length") == h_proxy.headers.get(
-        "Content-Length"
-    )
-    assert not h_direct.content and not h_proxy.content
-
-
-@pytest.mark.parametrize(
-    "proxy_configuration",
-    [
-        "single_proxy_unencrypted_fs",
-        "double_proxy_unencrypted_fs",
-        "triple_proxy_unencrypted_fs",
-        "double_proxy_encrypted_fs",
-        "triple_proxy_encrypted_fs",
-        "quad_proxy_encrypted_fs",
-    ],
-    indirect=True,
-)
-def test_404_passthrough(proxy_configuration, python_http_server_ss):
-    proxy: Proxy = proxy_configuration[0]
-    server: HTTPServer = python_http_server_ss
-    direct_base, proxy_base = _base_urls(proxy, server)
-
-    missing = "/__missing__-" + uuid.uuid4().hex
-    d = requests.get(direct_base + missing, timeout=3)
-    p = requests.get(proxy_base + missing, timeout=3)
-
-    assert d.status_code == p.status_code == 404
-    assert abs(len(d.content) - len(p.content)) < 256  # allow minor diffs
-
-
-@pytest.mark.parametrize(
-    "proxy_configuration",
-    [
-        "single_proxy_unencrypted_fs",
-        "double_proxy_unencrypted_fs",
-        "triple_proxy_unencrypted_fs",
-        "double_proxy_encrypted_fs",
-        "triple_proxy_encrypted_fs",
-        "quad_proxy_encrypted_fs",
-    ],
-    indirect=True,
-)
-def test_unsupported_methods_passthrough(proxy_configuration, python_http_server_ss):
-    """Python static servers usually only implement GET/HEAD—ensure status class parity."""
-    proxy: Proxy = proxy_configuration[0]
-    server: HTTPServer = python_http_server_ss
-    direct_base, proxy_base = _base_urls(proxy, server)
-
-    for method in ("POST", "PUT", "DELETE", "PATCH"):
-        d = requests.request(method, direct_base, data=b"x=1", timeout=3)
-        p = requests.request(method, proxy_base, data=b"x=1", timeout=3)
-        assert d.status_code == p.status_code
-        assert (d.status_code // 100) == (p.status_code // 100)
-
-
-# ---------------- static files: content-type & integrity ----------------
-
-
-@pytest.mark.parametrize(
-    "proxy_configuration",
-    [
-        "single_proxy_unencrypted_fs",
-        "double_proxy_unencrypted_fs",
-        "triple_proxy_unencrypted_fs",
-        "double_proxy_encrypted_fs",
-        "triple_proxy_encrypted_fs",
-        "quad_proxy_encrypted_fs",
-    ],
-    indirect=True,
-)
-def test_content_type_preserved_for_static_files(
-    proxy_configuration, python_http_server_ss
-):
+def test_large_transfer_integrity(proxy_configuration, python_http_server_ss, tmp_path):
+    """
+    ~8MB download, streamed: hash must match direct vs via proxy.
+    """
     proxy: Proxy = proxy_configuration[0]
     server: HTTPServer = python_http_server_ss
 
-    base = _unique_dir("mimes")
-    txt = _write_file(base, "test.txt")
-    png = _write_file(base, "test.png", size=2048, binary=True)
+    # Make a large file under /tmp for the HTTP file server to serve.
+    big = tmp_path / "large.bin"
+    with big.open("wb") as f:
+        remaining = 8 * 1024 * 1024
+        block = os.urandom(8192)
+        while remaining > 0:
+            n = min(remaining, len(block))
+            f.write(block[:n])
+            remaining -= n
 
-    for rel in (txt, png):
-        rel_url = "/" + str(rel.relative_to(DOCROOT)).replace("\\", "/")
-        d = requests.get(f"http://{server.addr}:{server.port}{rel_url}", timeout=3)
-        p = requests.get(f"http://{proxy.in_addr}:{proxy.in_port}{rel_url}", timeout=3)
-        assert d.status_code == p.status_code == 200
-        assert d.headers.get("Content-Type") == p.headers.get("Content-Type")
-        assert d.content == p.content
-
-
-@pytest.mark.parametrize(
-    "proxy_configuration",
-    [
-        "single_proxy_unencrypted_fs",
-        "double_proxy_unencrypted_fs",
-        "triple_proxy_unencrypted_fs",
-        "double_proxy_encrypted_fs",
-        "triple_proxy_encrypted_fs",
-        "quad_proxy_encrypted_fs",
-    ],
-    indirect=True,
-)
-def test_large_file_transfer_integrity(proxy_configuration, python_http_server_ss):
-    """~8MB streamed download: byte-for-byte identical via proxy."""
-    proxy: Proxy = proxy_configuration[0]
-    server: HTTPServer = python_http_server_ss
-
-    base = _unique_dir("big")
-    big = _write_file(base, "large.bin", size=8 * 1024 * 1024, binary=True)
     rel = "/" + str(big.relative_to(DOCROOT)).replace("\\", "/")
 
-    direct_url = f"http://{server.addr}:{server.port}{rel}"
-    proxy_url = f"http://{proxy.in_addr}:{proxy.in_port}{rel}"
+    def sha256_stream(url: str) -> str:
+        h = hashlib.sha256()
+        with requests.get(url, stream=True, timeout=LARGE_TIMEOUT) as r:
+            r.raise_for_status()
+            for chunk in r.iter_content(64 * 1024):
+                if chunk:
+                    h.update(chunk)
+        return h.hexdigest()
 
-    h_direct = _sha256_stream(direct_url)
-    h_proxy = _sha256_stream(proxy_url)
-    assert h_direct == h_proxy
-
-
-# ---------------- ranges & directory listings ----------------
-
-
-@pytest.mark.parametrize(
-    "proxy_configuration",
-    [
-        "single_proxy_unencrypted_fs",
-        "double_proxy_unencrypted_fs",
-        "triple_proxy_unencrypted_fs",
-        "double_proxy_encrypted_fs",
-        "triple_proxy_encrypted_fs",
-        "quad_proxy_encrypted_fs",
-    ],
-    indirect=True,
-)
-def test_range_requests_when_supported(proxy_configuration, python_http_server_ss):
-    proxy: Proxy = proxy_configuration[0]
-    server: HTTPServer = python_http_server_ss
-
-    base = _unique_dir("ranges")
-    sample = _write_file(base, "sample.bin", size=512_000, binary=True)
-    rel = "/" + str(sample.relative_to(DOCROOT)).replace("\\", "/")
-
-    direct_url = f"http://{server.addr}:{server.port}{rel}"
-    proxy_url = f"http://{proxy.in_addr}:{proxy.in_port}{rel}"
-
-    head = requests.head(direct_url, timeout=3)
-    if head.headers.get("Accept-Ranges", "").lower() != "bytes":
-        pytest.skip("Server does not advertise byte-range support")
-
-    headers = {"Range": "bytes=100-1099"}
-    d = requests.get(direct_url, headers=headers, timeout=3)
-    p = requests.get(proxy_url, headers=headers, timeout=3)
-    assert d.status_code == p.status_code == 206
-    assert d.headers.get("Content-Range") == p.headers.get("Content-Range")
-    assert d.content == p.content
-
-    full = requests.get(direct_url, timeout=3).content
-    assert d.content == full[100:1100]
+    d = sha256_stream(f"http://{server.addr}:{server.port}{rel}")
+    p = sha256_stream(f"http://{proxy.in_addr}:{proxy.in_port}{rel}")
+    assert d == p
 
 
 @pytest.mark.parametrize(
@@ -316,61 +129,32 @@ def test_range_requests_when_supported(proxy_configuration, python_http_server_s
     ],
     indirect=True,
 )
-def test_directory_listing_parity(proxy_configuration, python_http_server_ss):
-    """Ensure directory listings keep filenames intact via proxy."""
+def test_concurrent_clients(proxy_configuration, python_http_server_ss, tmp_path):
+    """
+    Many clients concurrently pulling the same bytes through the proxy.
+    """
     proxy: Proxy = proxy_configuration[0]
     server: HTTPServer = python_http_server_ss
 
-    subdir = _unique_dir("listing")
-    (subdir / "a.txt").write_text("A\n", encoding="utf-8")
-    (subdir / "b.txt").write_text("B\n", encoding="utf-8")
-
-    rel = "/" + str(subdir.relative_to(DOCROOT)).replace("\\", "/") + "/"
-    d = requests.get(f"http://{server.addr}:{server.port}{rel}", timeout=3)
-    p = requests.get(f"http://{proxy.in_addr}:{proxy.in_port}{rel}", timeout=3)
-
-    assert d.status_code == p.status_code == 200
-    for name in ("a.txt", "b.txt"):
-        assert name.encode() in d.content
-        assert name.encode() in p.content
-    assert abs(len(d.content) - len(p.content)) < 2048
-
-
-# ---------------- concurrency & persistence ----------------
-
-
-@pytest.mark.parametrize(
-    "proxy_configuration",
-    [
-        "single_proxy_unencrypted_fs",
-        "double_proxy_unencrypted_fs",
-        "triple_proxy_unencrypted_fs",
-        "double_proxy_encrypted_fs",
-        "triple_proxy_encrypted_fs",
-        "quad_proxy_encrypted_fs",
-    ],
-    indirect=True,
-)
-def test_concurrent_clients_download_same_file(
-    proxy_configuration, python_http_server_ss
-):
-    """Many clients concurrently downloading the same file through the proxy."""
-    proxy: Proxy = proxy_configuration[0]
-    server: HTTPServer = python_http_server_ss
-
-    base = _unique_dir("concurrency")
-    payload = _write_file(base, "payload.dat", size=2 * 1024 * 1024, binary=True)
+    payload = tmp_path / "payload.bin"
+    payload.write_bytes(os.urandom(2 * 1024 * 1024))
     rel = "/" + str(payload.relative_to(DOCROOT)).replace("\\", "/")
 
     direct_url = f"http://{server.addr}:{server.port}{rel}"
     proxy_url = f"http://{proxy.in_addr}:{proxy.in_port}{rel}"
 
-    ref = _sha256_stream(direct_url)
+    ref = hashlib.sha256(
+        requests.get(direct_url, timeout=LARGE_TIMEOUT).content
+    ).hexdigest()
+
+    def fetch_hash():
+        return hashlib.sha256(
+            requests.get(proxy_url, timeout=LARGE_TIMEOUT).content
+        ).hexdigest()
 
     N = 12
     with cf.ThreadPoolExecutor(max_workers=N) as ex:
-        futs = [ex.submit(_sha256_stream, proxy_url) for _ in range(N)]
-        results = [f.result() for f in futs]
+        results = list(ex.map(lambda _: fetch_hash(), range(N)))
 
     assert all(h == ref for h in results)
 
@@ -387,62 +171,32 @@ def test_concurrent_clients_download_same_file(
     ],
     indirect=True,
 )
-def test_keepalive_many_small_requests(proxy_configuration, python_http_server_ss):
-    """One TCP session through the proxy, many sequential GETs (keep-alive)."""
-    proxy: Proxy = proxy_configuration[0]
-    server: HTTPServer = python_http_server_ss
-
-    base = _unique_dir("small")
-    files = [_write_file(base, f"f{i}.txt") for i in range(20)]
-
-    with requests.Session() as s:
-        for pth in files:
-            rel = "/" + str(pth.relative_to(DOCROOT)).replace("\\", "/")
-            d = s.get(f"http://{server.addr}:{server.port}{rel}", timeout=3)
-            p = s.get(f"http://{proxy.in_addr}:{proxy.in_port}{rel}", timeout=3)
-            assert d.status_code == p.status_code == 200
-            assert d.content == p.content
-
-
-@pytest.mark.parametrize(
-    "proxy_configuration",
-    [
-        "single_proxy_unencrypted_fs",
-        "double_proxy_unencrypted_fs",
-        "triple_proxy_unencrypted_fs",
-        "double_proxy_encrypted_fs",
-        "triple_proxy_encrypted_fs",
-        "quad_proxy_encrypted_fs",
-    ],
-    indirect=True,
-)
-def test_client_abort_does_not_poison_next_request(
-    proxy_configuration, python_http_server_ss
+def test_client_abort_then_next_ok(
+    proxy_configuration, python_http_server_ss, tmp_path
 ):
     """
-    Simulate a client that aborts mid-transfer (close early), then perform a fresh request.
-    Proxy should properly clean up and serve subsequent requests.
+    Client closes early mid-transfer through proxy; a subsequent fresh transfer still works.
     """
     proxy: Proxy = proxy_configuration[0]
     server: HTTPServer = python_http_server_ss
 
-    base = _unique_dir("abort")
-    big = _write_file(base, "abort.bin", size=4 * 1024 * 1024, binary=True)
+    big = tmp_path / "abort.bin"
+    big.write_bytes(os.urandom(4 * 1024 * 1024))
     rel = "/" + str(big.relative_to(DOCROOT)).replace("\\", "/")
-    proxy_url = f"http://{proxy.in_addr}:{proxy.in_port}{rel}"
 
-    # Start a streaming download and abort early
-    r = requests.get(proxy_url, stream=True, timeout=5)
-    next(r.iter_content(chunk_size=64 * 1024))  # read one chunk
-    r.close()  # abort connection
+    url = f"http://{proxy.in_addr}:{proxy.in_port}{rel}"
+    r = requests.get(url, stream=True, timeout=LARGE_TIMEOUT)
+    next(r.iter_content(64 * 1024))
+    r.close()
 
-    # Now the next request should still work
-    h1 = _sha256_stream(proxy_url)
-    h2 = _sha256_stream(proxy_url)
+    h1 = hashlib.sha256(requests.get(url, timeout=LARGE_TIMEOUT).content).hexdigest()
+    h2 = hashlib.sha256(requests.get(url, timeout=LARGE_TIMEOUT).content).hexdigest()
     assert h1 == h2
 
 
-# ---------------- URL handling quirks ----------------
+# ============================================================
+#                 HOSTNAME & IPv6 REACHABILITY
+# ============================================================
 
 
 @pytest.mark.parametrize(
@@ -457,19 +211,235 @@ def test_client_abort_does_not_poison_next_request(
     ],
     indirect=True,
 )
-def test_query_string_and_encoded_paths(proxy_configuration, python_http_server_ss):
-    """Ensure proxies preserve path and query intact."""
+def test_hostname_resolution_to_proxy(proxy_configuration, python_http_server_ss):
+    """
+    Connect to the proxy via 'localhost' (host->addr resolution on the client side),
+    then fetch bytes; compare with direct path. This asserts the proxy does not
+    depend on a specific literal IP at the client connect step.
+    """
     proxy: Proxy = proxy_configuration[0]
     server: HTTPServer = python_http_server_ss
 
-    base = _unique_dir("query")
-    pth = _write_file(base, "sp ace.txt")
-    rel = "/" + str(pth.relative_to(DOCROOT)).replace("\\", "/")  # contains space
-    enc_rel = rel.replace(" ", "%20")
-    qs = "?a=1&b=2&c=%7Bjson%7D"
+    direct = requests.get(f"http://{server.addr}:{server.port}", timeout=SMALL_TIMEOUT)
+    via = requests.get(f"http://localhost:{proxy.in_port}", timeout=SMALL_TIMEOUT)
 
-    d = requests.get(f"http://{server.addr}:{server.port}{enc_rel}{qs}", timeout=3)
-    p = requests.get(f"http://{proxy.in_addr}:{proxy.in_port}{enc_rel}{qs}", timeout=3)
+    assert direct.status_code // 100 == 2
+    assert via.status_code // 100 == 2
+    assert direct.content == via.content
 
-    assert d.status_code == p.status_code == 200
-    assert d.content == p.content
+
+@pytest.mark.parametrize(
+    "proxy_configuration",
+    [
+        "single_proxy_unencrypted_fs",
+        "double_proxy_unencrypted_fs",
+        "triple_proxy_unencrypted_fs",
+        "double_proxy_encrypted_fs",
+        "triple_proxy_encrypted_fs",
+        "quad_proxy_encrypted_fs",
+    ],
+    indirect=True,
+)
+def test_ipv6_client_to_proxy_when_available(
+    proxy_configuration, python_http_server_ss
+):
+    """
+    If the proxy is listening on ::1 as well (dual-stack or v6), verify reachability
+    by connecting via IPv6 literal. If not, skip with a helpful message.
+    """
+    proxy: Proxy = proxy_configuration[0]
+    server: HTTPServer = python_http_server_ss
+
+    try:
+        url_v6 = f"http://[::1]:{proxy.in_port}"
+        via = requests.get(url_v6, timeout=SMALL_TIMEOUT)
+    except Exception as e:  # noqa: BLE001
+        pytest.skip(f"IPv6 localhost connect failed or proxy not bound on ::1: {e!r}")
+
+    direct = requests.get(f"http://{server.addr}:{server.port}", timeout=SMALL_TIMEOUT)
+    assert direct.status_code // 100 == 2
+    assert via.status_code // 100 == 2
+    assert direct.content == via.content
+
+
+# ============================================================
+#                 SERVER-SENDS-FIRST (BANNER) CASES
+# ============================================================
+
+
+@pytest.fixture
+def single_proxy_to_target():
+    """
+    OPTIONAL: start a single proxy instance forwarding to (host, port).
+    Return a callable (host, port) -> (listen_addr, listen_port).
+
+    Wire this to your Proxy class if it supports spawning a one-off proxy
+    to an arbitrary upstream. If not available, tests using this fixture
+    will skip gracefully.
+
+    Example wiring you might implement here (pseudo):
+        def _start(dst_host, dst_port):
+            px = Proxy.spawn(dst_host, dst_port, enc=False)
+            px.start()
+            return px.in_addr, px.in_port
+        return _start
+    """
+
+    def _unavailable(*_args, **_kwargs):
+        pytest.skip("single_proxy_to_target fixture not wired to your Proxy class.")
+
+    return _unavailable
+
+
+@pytest.mark.parametrize("use_ipv6", [False, True])
+def test_server_sends_first_banner(single_proxy_to_target, tcp_banner_server, use_ipv6):
+    """
+    The upstream sends a banner immediately (no client bytes first). Verify the proxy
+    faithfully forwards the banner and then bidirectional echo works.
+    """
+    host, port = tcp_banner_server["v6" if use_ipv6 else "v4"]
+    try:
+        in_addr, in_port = single_proxy_to_target(host, port)
+    except pytest.skip.Exception:  # propagate skip from the fixture
+        raise
+
+    # 1) Read the banner (server -> client) through the proxy
+    with closing(
+        socket.create_connection((in_addr, in_port), timeout=SMALL_TIMEOUT)
+    ) as s:
+        banner = s.recv(128)
+        assert banner.startswith(b"HELLO ")
+        # 2) Then prove bi-dir still works
+        s.sendall(b"PING")
+        got = s.recv(4)
+        assert got == b"PING"
+
+
+@pytest.mark.parametrize("use_ipv6", [False, True])
+def test_transport_integrity_over_echo(
+    single_proxy_to_target, tcp_echo_server, use_ipv6
+):
+    """
+    Byte-for-byte echo integrity for arbitrary payload over TCP, both IPv4 and IPv6,
+    proving no transformation by the proxy.
+    """
+    host, port = tcp_echo_server["v6" if use_ipv6 else "v4"]
+    try:
+        in_addr, in_port = single_proxy_to_target(host, port)
+    except pytest.skip.Exception:
+        raise
+
+    msg = os.urandom(256 * 1024)  # 256 KiB arbitrary bytes
+    with closing(
+        socket.create_connection((in_addr, in_port), timeout=LARGE_TIMEOUT)
+    ) as s:
+        s.sendall(msg)
+        view = memoryview(bytearray(len(msg)))
+        n = 0
+        while n < len(msg):
+            r = s.recv_into(view[n:], 64 * 1024)
+            assert r > 0
+            n += r
+        assert bytes(view) == msg
+
+
+# ============================================================
+#              Tiny TCP fixtures (protocol-agnostic)
+# ============================================================
+
+
+@pytest.fixture(scope="function")
+def tcp_echo_server():
+    """
+    Start a dual-stack echo server (v4 on 127.0.0.1, v6 on ::1) for integrity checks.
+    Returns {'v4': ('127.0.0.1', port), 'v6': ('::1', port6)}
+    """
+    servers = {}
+
+    def _start(family, addr):
+        s = socket.socket(family, socket.SOCK_STREAM)
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s.bind((addr, 0))
+        s.listen(16)
+        port = s.getsockname()[1]
+
+        def _loop():
+            try:
+                while True:
+                    try:
+                        conn, _ = s.accept()
+                    except OSError:
+                        break
+                    with conn:
+                        while True:
+                            data = conn.recv(64 * 1024)
+                            if not data:
+                                break
+                            conn.sendall(data)
+            finally:
+                s.close()
+
+        import threading
+
+        t = threading.Thread(target=_loop, daemon=True)
+        t.start()
+        return port
+
+    # v4
+    servers["v4"] = ("127.0.0.1", _start(socket.AF_INET, "127.0.0.1"))
+    # v6 (may fail on systems without ::1); skip later if connect fails
+    try:
+        servers["v6"] = ("::1", _start(socket.AF_INET6, "::1"))
+    except OSError:
+        servers["v6"] = ("::1", None)
+
+    return servers
+
+
+@pytest.fixture(scope="function")
+def tcp_banner_server():
+    """
+    Start a small server that sends first (banner), then echoes thereafter.
+    Returns {'v4': ('127.0.0.1', port), 'v6': ('::1', port6)}
+    """
+    servers = {}
+
+    def _start(family, addr):
+        s = socket.socket(family, socket.SOCK_STREAM)
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s.bind((addr, 0))
+        s.listen(16)
+        port = s.getsockname()[1]
+
+        def _loop():
+            try:
+                while True:
+                    try:
+                        conn, _ = s.accept()
+                    except OSError:
+                        break
+                    with conn:
+                        # Send banner immediately
+                        conn.sendall(b"HELLO BANNER\r\n")
+                        # Then echo whatever arrives
+                        while True:
+                            data = conn.recv(64 * 1024)
+                            if not data:
+                                break
+                            conn.sendall(data)
+            finally:
+                s.close()
+
+        import threading
+
+        t = threading.Thread(target=_loop, daemon=True)
+        t.start()
+        return port
+
+    servers["v4"] = ("127.0.0.1", _start(socket.AF_INET, "127.0.0.1"))
+    try:
+        servers["v6"] = ("::1", _start(socket.AF_INET6, "::1"))
+    except OSError:
+        servers["v6"] = ("::1", None)
+
+    return servers

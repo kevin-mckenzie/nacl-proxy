@@ -27,8 +27,16 @@ enum {
 };
 
 static int get_ipv4_listener(const char *addr, uint16_t port);
-static int get_ipv6_listener(const char *addr, uint16_t port);
+/** Create and bind an IPv4 listening socket. */
 
+static int get_ipv6_listener(const char *addr, uint16_t port);
+/** Create and bind an IPv6 listening socket. */
+
+/**
+ * @brief Set a socket to non-blocking mode.
+ *
+ * Uses fcntl() to set O_NONBLOCK. This is required for event-driven IO.
+ */
 int network_set_sock_nonblocking(int sock_fd) {
     ASSERT_RET(-1 < sock_fd);
 
@@ -47,6 +55,12 @@ int network_set_sock_nonblocking(int sock_fd) {
     return PROXY_SUCCESS;
 }
 
+/**
+ * @brief Connect to a remote server using address and port.
+ *
+ * Uses getaddrinfo() to resolve address, tries each result until connect succeeds.
+ * Uses non-blocking sockets for event-driven connection.
+ */
 int network_connect_to_server(const char *addr, const char *port_str) {
     ASSERT_RET(NULL != addr); // NOLINT (misc-include-cleaner)
     ASSERT_RET(NULL != port_str);
@@ -65,7 +79,7 @@ int network_connect_to_server(const char *addr, const char *port_str) {
     }
 
     for (struct addrinfo *p_curr = p_gai_result; p_curr != NULL; p_curr = p_curr->ai_next) {
-        // NOLINTNEXTLINE (hiccp-signed-bitwise)
+        // Try each resolved address until one succeeds.
         sock_fd = socket(p_curr->ai_family, p_curr->ai_socktype | SOCK_NONBLOCK, p_curr->ai_protocol);
         if (-1 == sock_fd) {
             LOG(ERR, "socket");
@@ -73,6 +87,7 @@ int network_connect_to_server(const char *addr, const char *port_str) {
         }
 
         if (0 != connect(sock_fd, p_curr->ai_addr, p_curr->ai_addrlen)) {
+            // EINPROGRESS means non-blocking connect is in progress, which is expected.
             if (EINPROGRESS == errno) {
                 break;
             }
@@ -90,6 +105,11 @@ int network_connect_to_server(const char *addr, const char *port_str) {
     return sock_fd;
 }
 
+/**
+ * @brief Create a listening socket bound to the specified address and port.
+ *
+ * Handles both IPv4 and IPv6. Returns -1 on error.
+ */
 int network_get_listen_socket(const char *addr_str, const char *port_str) {
     ASSERT_RET(NULL != addr_str);
     ASSERT_RET(NULL != port_str);
@@ -105,6 +125,7 @@ int network_get_listen_socket(const char *addr_str, const char *port_str) {
 
     port = (uint16_t)long_port;
 
+    // Quick check for ':' to decide IPv6 vs IPv4. Not robust, but sufficient for this use.
     bool b_ipv6 = false;
     if (NULL != strstr(addr_str, ":")) { // good enough for government work
         b_ipv6 = true;
@@ -134,12 +155,14 @@ static int get_ipv4_listener(const char *addr_str, uint16_t port) {
         goto CLEANUP;
     }
 
+    // Use SOCK_CLOEXEC and SOCK_NONBLOCK for security and event-driven IO.
     server_fd = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
     if (-1 == server_fd) {
         LOG(ERR, "socket");
         goto CLEANUP;
     }
 
+    // SO_REUSEADDR allows quick restarts after crash.
     if (-1 == setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &yes_to_reuse, sizeof(int))) {
         LOG(ERR, "setsockopt");
         goto CLEANUP;
@@ -181,12 +204,14 @@ static int get_ipv6_listener(const char *addr_str, uint16_t port) {
         goto CLEANUP;
     }
 
+    // Use SOCK_CLOEXEC and SOCK_NONBLOCK for security and event-driven IO.
     server_fd = socket(AF_INET6, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
     if (-1 == server_fd) {
         LOG(ERR, "socket");
         goto CLEANUP;
     }
 
+    // SO_REUSEADDR allows quick restarts after crash.
     if (-1 == setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &yes_to_reuse, sizeof(int))) {
         LOG(ERR, "setsockopt");
         goto CLEANUP;

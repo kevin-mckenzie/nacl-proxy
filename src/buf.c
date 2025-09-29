@@ -16,6 +16,21 @@
 #include "network.h"
 #include "utils.h"
 
+/**
+ * @brief Sends the contents of a buffer over a network connection.
+ *
+ * Handles both encrypted and unencrypted transmission, using netnacl_send() for encrypted data.
+ * Ensures all data in the buffer is sent, handling partial writes and non-blocking IO.
+ * Resets buffer state on successful send.
+ *
+ * @param p_net Pointer to network context (net_t).
+ * @param p_buf Pointer to buffer (buf_t) containing data to send.
+ * @param flags Flags for send() (e.g., MSG_DONTWAIT).
+ * @return PROXY_SUCCESS on success,
+ *         PROXY_WOULD_BLOCK if non-blocking IO required,
+ *         PROXY_DISCONNECT on disconnect,
+ *         PROXY_ERR on error.
+ */
 int buf_send(net_t *p_net, buf_t *p_buf, int flags) {
     ASSERT_RET(NULL != p_net); // NOLINT (misc-include-cleaner)
     ASSERT_RET(p_buf->size != 0);
@@ -56,6 +71,20 @@ int buf_send(net_t *p_net, buf_t *p_buf, int flags) {
     return PROXY_SUCCESS;
 }
 
+/**
+ * @brief Receives data into a buffer from a network connection.
+ *
+ * Handles both encrypted and unencrypted reception, using netnacl_recv() for encrypted data.
+ * Handles partial reads and non-blocking IO. Buffer is filled up to BUF_SIZ.
+ *
+ * @param p_net Pointer to network context (net_t).
+ * @param p_buf Pointer to buffer (buf_t) to store received data.
+ * @param flags Flags for recv() (e.g., MSG_DONTWAIT).
+ * @return PROXY_SUCCESS on success,
+ *         PROXY_WOULD_BLOCK if non-blocking IO required and no data received,
+ *         PROXY_DISCONNECT on disconnect,
+ *         PROXY_ERR on error.
+ */
 int buf_recv(net_t *p_net, buf_t *p_buf, int flags) {
     ASSERT_RET(NULL != p_net);
     ASSERT_RET(p_buf->read_pos == 0); // we should never be recving before a send from the same buffer is complete
