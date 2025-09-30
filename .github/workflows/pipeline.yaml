@@ -24,12 +24,14 @@ jobs:
 
     strategy:
       matrix:
-        target: [local, valgrind, asan, linux-x86_64-musl]
+        target: [local, valgrind, asan, linux-x86_64-musl, linux-i686-musl, linux-arm-musl, linux-arm64-musl, linux-mips-musl]
         build_type: [release, debug]
         exclude:
           - target: valgrind
             build_type: release
           - target: asan
+            build_type: release
+          - target: local
             build_type: release
 
     steps:

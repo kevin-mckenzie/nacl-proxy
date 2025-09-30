@@ -65,8 +65,8 @@ enum log_lvl {
                 color = COLOR_RESET;                                                                                   \
                 break;                                                                                                 \
             }                                                                                                          \
-            (void)fprintf(stderr, "%ld.%09ld [%s%5s%s] %d:%s():%d: ", now.tv_sec, now.tv_nsec, color, lvl_str,         \
-                          COLOR_RESET, getpid(), __func__, __LINE__);                                                  \
+            (void)fprintf(stderr, "%ld.%09ld [%s%5s%s] %d:%s():%d: ", (long int)now.tv_sec, (long int)now.tv_nsec,     \
+                          color, lvl_str, COLOR_RESET, getpid(), __func__, __LINE__);                                  \
             if (0 != errno) {                                                                                          \
                 (void)fprintf(stderr, "(errno:%d): " fmt "\n", errno, ##__VA_ARGS__) /*NOLINT*/;                       \
             } else {                                                                                                   \

@@ -208,7 +208,7 @@ ssize_t netnacl_recv(netnacl_t *p_nn, uint8_t *buf, size_t len, int flags) {
     if ((p_nn->hdr_bytes_recvd == sizeof(hdr_t)) && (p_nn->ct_bytes_recvd == p_nn->recv_hdr.len) &&
         (0 < p_nn->recv_pt_len)) {
         ret = copy_plaintext_to_buffer(p_nn, buf, len);
-        LOG(IO, "read %ld / %zu requested", ret, len);
+        LOG(IO, "read %zd / %zu requested", ret, len);
     }
 
     assert(p_nn->hdr_bytes_recvd <= sizeof(hdr_t));

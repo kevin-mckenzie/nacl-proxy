@@ -30,6 +30,30 @@ TARGETS = {
         "toolchain_file": f"{TOOLCHAIN_INSTALL_DIR}/x86-64--musl--stable-2024.05-1/{BOOTLIN_CMAKE_TOOLCHAIN_POSTFIX}",
         "test": True,
     },
+    "linux-i686-musl": {
+        "url": "https://toolchains.bootlin.com/downloads/releases/toolchains/x86-i686/tarballs/x86-i686--musl--stable-2025.08-1.tar.xz",
+        "toolchain_file": f"{TOOLCHAIN_INSTALL_DIR}/x86-i686--musl--stable-2025.08-1/{BOOTLIN_CMAKE_TOOLCHAIN_POSTFIX}",
+        "emulator": "qemu-i386-static",
+        "test": True,
+    },
+    "linux-arm64-musl": {
+        "url": "https://toolchains.bootlin.com/downloads/releases/toolchains/aarch64/tarballs/aarch64--musl--stable-2025.08-1.tar.xz",
+        "toolchain_file": f"{TOOLCHAIN_INSTALL_DIR}/aarch64--musl--stable-2025.08-1/{BOOTLIN_CMAKE_TOOLCHAIN_POSTFIX}",
+        "emulator": "qemu-aarch64-static",
+        "test": True,
+    },
+    "linux-arm-musl": {
+        "url": "https://toolchains.bootlin.com/downloads/releases/toolchains/armv7-eabihf/tarballs/armv7-eabihf--musl--stable-2025.08-1.tar.xz",
+        "toolchain_file": f"{TOOLCHAIN_INSTALL_DIR}/armv7-eabihf--musl--stable-2025.08-1/{BOOTLIN_CMAKE_TOOLCHAIN_POSTFIX}",
+        "emulator": "qemu-arm-static",
+        "test": True,
+    },
+    "linux-mips-musl": {
+        "url": "https://toolchains.bootlin.com/downloads/releases/toolchains/mips32/tarballs/mips32--musl--stable-2025.08-1.tar.xz",
+        "toolchain_file": f"{TOOLCHAIN_INSTALL_DIR}/mips32--musl--stable-2025.08-1/{BOOTLIN_CMAKE_TOOLCHAIN_POSTFIX}",
+        "emulator": "qemu-mips-static",
+        "test": True,
+    },
 }
 
 
@@ -160,6 +184,24 @@ def package(ctx: invoke.context):
     ctx.run(f"tar -czf dist/{PROJECT_NAME}_{VERSION}_pkg.tar.gz dist/bin")
     ctx.run(f"zip -r dist/{PROJECT_NAME}_{VERSION}_docs.zip dist/docs")
 
+@invoke.task
+def build_all(ctx):
+    for target in TARGETS:
+        build(ctx, target=target, release=False)
+        build(ctx, target=target, release=True)
+
+@invoke.task
+def analyze_all(ctx):
+    for target in TARGETS:
+        analyze(ctx, target=target, release=False)
+        analyze(ctx, target=target, release=True)
+
+@invoke.task
+def test_all(ctx):
+    for target, keys in TARGETS.items():
+        if keys.get("test", False):
+            test(ctx, target=target, release=False)
+            test(ctx, target=target, release=True)
 
 @invoke.task
 def clean(ctx: invoke.context):
@@ -167,7 +209,9 @@ def clean(ctx: invoke.context):
 
 
 @invoke.task
-def docker(ctx: invoke.context, build: bool = False, push: bool = False):  # pylint: disable=W0621
+def docker(
+    ctx: invoke.context, build: bool = False, push: bool = False
+):  # pylint: disable=W0621
     if not build and not push:
         ctx.run(
             f"docker run --user $(id -u):$(id -u) --rm -it -v .:/project --network=host {DOCKER_IMAGE} /bin/bash",
