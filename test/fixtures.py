@@ -6,6 +6,8 @@ import socket
 
 import pytest
 
+# pylint: disable=C0116
+
 
 @dataclasses.dataclass
 class Proxy:
