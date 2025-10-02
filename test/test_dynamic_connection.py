@@ -147,4 +147,3 @@ def test_server_push_sizes(proxy_configuration, n):
         server.sendall(blob)
         got = _recv_exact(client, n)
         assert got == blob
-

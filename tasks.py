@@ -69,6 +69,7 @@ CMAKE_FILES = filenames_string("cmake/*.cmake", "CMakeLists.txt")
 
 @invoke.task
 def format(ctx):  # pylint: disable=W0622
+    """Format source code using ruff, clang-format, and cmake-format."""
     ctx.run("ruff format")
     ctx.run(f"clang-format -i {C_FILES}")
     ctx.run(f"cmake-format -i {CMAKE_FILES}")
@@ -76,10 +77,10 @@ def format(ctx):  # pylint: disable=W0622
 
 @invoke.task
 def lint(ctx):
+    """Lint source code using lizard, clang-format, and cmake-format."""
     ctx.run(f"lizard -w -C 12 -L 60 {C_FILES}")
     ctx.run(f"clang-format -i --dry-run -Werror {C_FILES}")
     ctx.run(f"cmake-format --check -l debug {CMAKE_FILES}")
-    # TODO: yamllint for .yml files
 
 
 @invoke.task
@@ -88,6 +89,7 @@ def analyze(
     target: str = "local",
     release: bool = False,
 ):
+    """Perform static analysis using CodeChecker on an already built target. See `inv build --list-targets` for valid targets."""
     if target not in TARGETS:
         raise invoke.Exit(
             f"Invalid target: {target} must be one of {list(TARGETS.keys())}"
@@ -121,6 +123,7 @@ def build(
     release: bool = False,
     list_targets: bool = False,
 ):
+    """Build the project using CMake. See inv build --list-targets for valid targets."""
     if target not in TARGETS:
         raise invoke.Exit(
             f"Invalid target: {target} must be one of {list(TARGETS.keys())}"
@@ -162,6 +165,7 @@ def test(
     k: str = "",
     release: bool = False,
 ):
+    """Run tests using pytest on an already built target. See inv build --list-targets for valid targets."""
     if target not in TARGETS:
         raise invoke.Exit(
             f"Invalid target: {target} must be one of {list(TARGETS.keys())}"
@@ -181,23 +185,27 @@ def test(
 
 @invoke.task
 def package(ctx: invoke.context):
+    """Package built binaries and documentation into tarballs and zip files."""
     ctx.run(f"tar -czf dist/{PROJECT_NAME}_{VERSION}_pkg.tar.gz dist/bin")
     ctx.run(f"zip -r dist/{PROJECT_NAME}_{VERSION}_docs.zip dist/docs")
 
 @invoke.task
 def build_all(ctx):
+    """Build all targets defined in the TARGETS dictionary."""
     for target in TARGETS:
         build(ctx, target=target, release=False)
         build(ctx, target=target, release=True)
 
 @invoke.task
 def analyze_all(ctx):
+    """Analyze all targets defined in the TARGETS dictionary."""
     for target in TARGETS:
         analyze(ctx, target=target, release=False)
         analyze(ctx, target=target, release=True)
 
 @invoke.task
 def test_all(ctx):
+    """Test all targets defined in the TARGETS dictionary that have 'test' set to True."""
     for target, keys in TARGETS.items():
         if keys.get("test", False):
             test(ctx, target=target, release=False)
@@ -212,6 +220,7 @@ def clean(ctx: invoke.context):
 def docker(
     ctx: invoke.context, build: bool = False, push: bool = False
 ):  # pylint: disable=W0621
+    """Build, push, or run an interactive shell in the docker image."""
     if not build and not push:
         ctx.run(
             f"docker run --user $(id -u):$(id -u) --rm -it -v .:/project --network=host {DOCKER_IMAGE} /bin/bash",
@@ -228,6 +237,7 @@ def docker(
 
 @invoke.task
 def install_toolchains(ctx, target="all"):
+    """Download and install cross-compilation toolchains from Bootlin."""
     install_targets = TARGETS
     if target != "all":
         install_targets[target] = TARGETS[target]

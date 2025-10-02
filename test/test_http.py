@@ -32,7 +32,6 @@ from fixtures import (
     python_http_server_ipv6_fs,
 )
 
-UPSTREAM_ADDR = ("127.0.0.1", 8001)
 DOCROOT = Path("/tmp")
 SMALL_TIMEOUT = 3
 LARGE_TIMEOUT = 10
