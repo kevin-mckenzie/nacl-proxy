@@ -1,2 +1,2 @@
-src/netnacl/src/tweetnacl.c
-src/netnacl/src/tweetnacl.h
+src/nn/src/tweetnacl.c
+src/nn/src/tweetnacl.h
