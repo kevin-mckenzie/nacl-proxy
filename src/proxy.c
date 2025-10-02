@@ -74,7 +74,6 @@ volatile sig_atomic_t g_run_flag = 1; // NOLINT
 
 static void signal_handler(int arg) {
     (void)arg;
-    ssize_t _ = write(STDERR_FILENO, "GOT SIGINT/SIGTERM\n", 1);
     g_run_flag = 0; // Stop event loop on signal
 }
 
