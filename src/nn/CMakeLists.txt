@@ -1,10 +1,22 @@
-set(TARGET proxy-${BUILD_NAME})
+cmake_minimum_required(VERSION 4.0)
+project(netnacl C)
 
-include_directories(include)
-add_subdirectory(${CMAKE_SOURCE_DIR}/src/nn)
+set(TARGET netnacl)
 
-add_executable(${TARGET} main.c buf.c event.c network.c proxy.c)
-add_compile_options(${TARGET} PRIVATE -Wall -Wpedantic -Werror)
+if(NOT LINK_TYPE)
+  set(LINK_TYPE STATIC)
+endif()
+
+if (NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE "Debug")
+endif()
+
+add_library(${TARGET} ${LINK_TYPE}
+  src/netnacl.c
+  src/tweetnacl.c
+)
+
+target_include_directories(${TARGET} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 target_compile_definitions(${TARGET} PRIVATE _POSIX_C_SOURCE=200809L)
 
@@ -19,10 +31,6 @@ if(ASAN)
   target_compile_options(${TARGET} PRIVATE -fsanitize=address,undefined)
 endif()
 
-if(${LINKING} STREQUAL "static")
-  target_link_options(${TARGET} PRIVATE -static)
-endif()
-
 if(${CMAKE_BUILD_TYPE} STREQUAL "Debug")
   target_compile_options(${TARGET} PRIVATE -g -Og)
 endif()
@@ -32,7 +40,3 @@ if(${CMAKE_BUILD_TYPE} STREQUAL "MinSizeRel")
                                            -fdata-sections)
   target_link_options(${TARGET} PRIVATE -s -Wl,--gc-sections)
 endif()
-
-target_link_libraries(${TARGET} PRIVATE netnacl)
-
-install(TARGETS ${TARGET} DESTINATION ${CMAKE_SOURCE_DIR}/dist/bin)
