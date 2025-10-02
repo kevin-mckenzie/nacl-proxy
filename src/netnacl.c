@@ -67,9 +67,10 @@ static int g_urandom = -1; // NOLINT (cppcoreguidelines-avoid-non-const-global-v
  * Exits the process if no entropy source is available.
  */
 void randombytes(uint8_t *buf, uint64_t sz) { // NOLINT (clang-diagnostic-missing-prototypes)
+    size_t total_sz = (size_t)sz;
     size_t total_read_sz = 0;
-    while (total_read_sz < sz) {
-        ssize_t read_sz = getrandom(buf + total_read_sz, sz - total_read_sz, 0);
+    while (total_read_sz < total_sz) {
+        ssize_t read_sz = getrandom(buf + total_read_sz, total_sz - total_read_sz, 0);
 
         if (-1 == read_sz) {
             LOG(ERR, "getrandom");
@@ -88,6 +89,7 @@ void randombytes(uint8_t *buf, uint64_t sz) { // NOLINT (clang-diagnostic-missin
 
 READ_DEV_URANDOM:
     if (-1 == g_urandom) {
+        // NOLINTNEXTLINE (clang-analyzer-unix.API) - False positive on mips
         g_urandom = open("/dev/urandom", O_RDONLY | O_CLOEXEC);
         if (-1 == g_urandom) {
             LOG(ERR, "open: /dev/urandom");
@@ -96,8 +98,8 @@ READ_DEV_URANDOM:
     }
 
     total_read_sz = 0;
-    while (total_read_sz < sz) {
-        ssize_t read_sz = read(g_urandom, buf + total_read_sz, sz - total_read_sz);
+    while (total_read_sz < total_sz) {
+        ssize_t read_sz = read(g_urandom, buf + total_read_sz, total_sz - total_read_sz);
 
         if (-1 == read_sz) {
             if (EINTR == errno) {

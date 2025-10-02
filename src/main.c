@@ -33,11 +33,13 @@ int main(int argc, char *argv[]) {
 }
 
 static void print_usage(const char *prog_name) {
+#ifndef NDEBUG
     // Print usage and option help for users.
     printf("Usage: %s [-io] <bind address> <bind port> <server address> <server port>\n", prog_name);
     printf("  -i : encrypt incoming client connections\n");
     printf("  -o : encrypt outgoing server connections\n");
     printf("  -io : encrypt both incoming and outgoing connections\n");
+#endif
 }
 
 /**

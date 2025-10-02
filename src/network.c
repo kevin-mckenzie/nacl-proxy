@@ -2,8 +2,6 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <netdb.h>
-#include <stdbool.h>
-#include <stdint.h>
 #include <sys/socket.h>
 #include <time.h>
 #include <unistd.h>

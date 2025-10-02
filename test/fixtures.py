@@ -37,7 +37,14 @@ def free_port():
     return port
 
 
-def create_proxy(in_port, out_port, encrypt_in=False, encrypt_out=False) -> Proxy:
+def create_proxy(
+    in_port,
+    out_port,
+    in_addr="127.0.0.1",
+    out_addr="127.0.0.1",
+    encrypt_in=False,
+    encrypt_out=False,
+) -> Proxy:
     bin_path = os.getenv("BIN_PATH")
     emulator_str = os.getenv("EMULATOR")
 
@@ -51,13 +58,13 @@ def create_proxy(in_port, out_port, encrypt_in=False, encrypt_out=False) -> Prox
     if encrypt_out:
         proc_args_list += ["-o"]
 
-    proc_args_list += ["127.0.0.1", str(in_port), "127.0.0.1", str(out_port)]
+    proc_args_list += [in_addr, str(in_port), out_addr, str(out_port)]
 
     proxy = Proxy(
         proc=subprocess.Popen(proc_args_list),
-        in_addr="127.0.0.1",
+        in_addr=in_addr,
         in_port=in_port,
-        out_addr="127.0.0.1",
+        out_addr=out_addr,
         out_port=out_port,
         encrypt_in=encrypt_in,
         encrypt_out=encrypt_out,
@@ -75,6 +82,23 @@ def create_proxy(in_port, out_port, encrypt_in=False, encrypt_out=False) -> Prox
 def single_proxy_unencrypted_fs():
     port = free_port()
     proxies = [create_proxy(port, 8000)]
+
+    yield proxies
+
+    for proxy in proxies:
+        proxy.proc.terminate()
+    time.sleep(0.1)
+
+
+@pytest.fixture
+def proxy_configuration(request):
+    # request.param is a fixture name; resolve it to the actual proxy chain object
+    return request.getfixturevalue(request.param)
+
+@pytest.fixture(scope="function")
+def single_proxy_ipv6_fs():
+    port = free_port()
+    proxies = [create_proxy(port, 8000, in_addr="::1", out_addr="::1")]
 
     yield proxies
 
@@ -168,8 +192,8 @@ def quad_proxy_encrypted_fs():
         proxy.proc.terminate()
 
 
-@pytest.fixture(scope="session")
-def python_http_server_ss():
+@pytest.fixture(scope="module")
+def python_http_server_ms():
     run_path = ["python3", "-m", "http.server", "-d", "/tmp"]
 
     server = HTTPServer(
@@ -181,3 +205,18 @@ def python_http_server_ss():
     yield server
 
     server.proc.terminate()
+
+@pytest.fixture(scope="function")
+def python_http_server_ipv6_fs():
+    run_path = ["python3", "-m", "http.server", "-d", "/tmp", "--bind", "::1"]
+
+    server = HTTPServer(
+        proc=subprocess.Popen(run_path),
+        addr="::1",
+        port=8000,
+    )
+    time.sleep(0.2)
+    yield server
+
+    server.proc.terminate()
+

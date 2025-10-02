@@ -79,6 +79,7 @@ def lint(ctx):
     ctx.run(f"lizard -w -C 12 -L 60 {C_FILES}")
     ctx.run(f"clang-format -i --dry-run -Werror {C_FILES}")
     ctx.run(f"cmake-format --check -l debug {CMAKE_FILES}")
+    # TODO: yamllint for .yml files
 
 
 @invoke.task

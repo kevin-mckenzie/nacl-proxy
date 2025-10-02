@@ -1,178 +1,109 @@
-# n-proxy
+# nacl-proxy
 
-A lightweight, event-driven TCP proxy server with optional end-to-end encryption using [TweetNaCl](https://tweetnacl.cr.yp.to/). Supports both IPv4 and IPv6, and can encrypt traffic on either or both sides of the proxy.
+A lightweight, event-driven TCP proxy server with optional inter-proxy encryption using [TweetNaCl](https://tweetnacl.cr.yp.to/). Supports both IPv4 and IPv6, DNS, and simultaneous server-to-client and client-to-server traffic. Deploys as a stripped static binary (~80K on most architectures) with minimal symbols and strings.
 
 ---
 
 ## Features
 
-- Transparent TCP proxying between client and server
-- Optional encryption for incoming and/or outgoing connections
-- Non-blocking, event-driven architecture
-- Minimal dependencies (TweetNaCl included)
-- Easy to build and test on Linux
-
----
-
-## Building
-
-### Prerequisites
-
-- **Linux** (tested on Ubuntu, Alpine, etc.)
-- **CMake** (>= 3.15)
-- **Ninja** (recommended)
-- **Python 3** (for testing)
-- **clang-format**, **lizard**, **cmake-format** (for linting/analysis)
-- **invoke** (Python task runner)
-
-### Build Targets
-
-The project supports multiple build targets for different environments and analysis tools. These are defined in tasks.py:
-
-- `local`: Standard build for your host system (static linking)
-- `asan`: AddressSanitizer build for runtime memory checks (dynamic linking)
-- `valgrind`: Build for running under Valgrind (dynamic linking)
-- `linux-x86_64-musl`: Cross-compile for musl libc (static linking)
-
-You can list all available targets with:
-
-```sh
-invoke build --list-targets
-```
-
-### Building with CMake and Ninja (manual)
-
-```sh
-mkdir -p build
-cmake -S . -B build -G Ninja
-cmake --build build --target install
-```
-
-The compiled binary will be in bin.
-
-### Building with Invoke
-
-Invoke automates builds, linting, and testing. Example usage:
-
-```sh
-# Build for your local system (static linking, debug)
-invoke build --target local
-
-# Build for your local system (release/minimal size)
-invoke build --target local --release
-
-# Build with AddressSanitizer (dynamic linking)
-invoke build --target asan
-
-# Build for Valgrind (dynamic linking)
-invoke build --target valgrind
-
-# Cross-compile for musl (static linking)
-invoke build --target linux-x86_64-musl
-```
-
----
-
-## Linting and Formatting
-
-Linting and formatting are automated via `invoke`:
-
-```sh
-invoke format      # Format code with clang-format, ruff, cmake-format
-invoke lint        # Run lizard complexity, clang-format check, cmake-format check
-```
-
----
-
-## Static Analysis
-
-Static analysis is performed using CodeChecker and other tools:
-
-```sh
-invoke analyze --target local
-invoke analyze --target asan
-invoke analyze --target linux-x86_64-musl
-```
-
-Reports are generated in `dist/reports/analysis/`.
-
----
-
-## Testing
-
-Unit and integration tests are provided. To run all tests:
-
-```sh
-invoke test
-```
-
-Or, to test a specific build target:
-
-```sh
-invoke test --target asan
-invoke test --target valgrind
-invoke test --target linux-x86_64-musl
-```
-
-You can also run tests manually with pytest:
-
-```sh
-pytest . -vv
-```
+- Fully non-blocking, event-driven architecture
+- Optional authenticated encryption between proxies
+- POSIX.1-2008 Compliant
+- Deploys as a small (~70kB) static binary
+- Minimal dependencies (only TweetNaCl)
 
 ---
 
 ## Usage
 
-### Command-Line
-
-```sh
-./dist/bin/proxy-local-static-debug [-io] <bind address> <bind port> <server address> <server port>
+```bash
+./proxy [-io] <bind address> <bind port> <server address> <server port>
 ```
 
-#### Options
+### Options:
+    `-i`: Encrypt client-side communications.
+    `-o`: Encrypt server-side communications.
+    `<bind address>`: Numeric local IPv4/IPv6 address to which the proxy will bind.
+    `<bind port>`: The TCP port on `<bind address>` to which the proxy will bind. Must be between 1 and 65535.
+    `<server address>`: Numeric IPv4/IPv6 address or domain name of the server to which the proxy will connect upon receiving a client connection.
+    `<server port>`: The TCP port on `<server address>` to which the proxy will attempt to connect. Must be between 1 and 65535.
 
-- `-i` : Encrypt incoming client connections
-- `-o` : Encrypt outgoing server connections
-- `-io` : Encrypt both directions
-- `-h` : Show help
 
-#### Example
+### Example Usage
 
-Proxy traffic from local port 8080 to remote server 10.0.0.2:9000, encrypting both directions:
+```bash
+# Start a python3 http server in its own terminal window on 8000
+python3 -m http.server -d /tmp
 
-```sh
-./dist/bin/proxy-local-static-debug -io 0.0.0.0 8080 10.0.0.2 9000
+# Create a large temporary file to retrieve via proxy
+fallocate -l 100M /tmp/testfile
+
+# Start three proxies where the one in the middle encrypts both incoming and outgoing data (each in their own terminal)
+user@dev:~$ ./proxy-linux-x86_64-musl-static-minsizerel -o ::1 8000 localhost 8000
+user@dev:~$ ./proxy-linux-x86_64-musl-static-minsizerel -io ::1 7999 ::1 8000
+user@dev:~$ ./proxy-linux-x86_64-musl-static-minsizerel -o ::1 7998 ::1 7999
+
+# Download the file
+user@dev:~$ wget http://localhost:7998/testfile
+
+Connecting to [::1]:7997... connected.
+HTTP request sent, awaiting response... 200 OK
+Length: 104857600 (100M) [application/octet-stream]
+Saving to: ‘testfile.2’
+
+testfile.2                      100%[======================================================>] 100.00M  7.88MB/s    in 12s
 ```
 
-Proxy traffic from IPv6 localhost to a remote IPv6 server, encrypting only outgoing:
+### Usage Considerations
+`nacl-proxy` uses `netnacl` to encrypt communications between nodes but cannot encrypt data between the client and first hop or server and last hop unless the endpoints also make use of `netnacl` for encyption.
 
-```sh
-./dist/bin/proxy-local-static-debug -o ::1 8080 2001:db8::1 9000
+### Known Issues
+`nacl-proxy` does not currently forward partion shutdown semantics. For example, if the client or server close only the read end of their socket `nacl-proxy` will interpret this as a complete socket closure. This will be fixed in a future release.
+
+
+## About This Repsitory
+
+Linting, building, analysis, and testing are most easily done in `docker`. The script `tasks.py` offers lint/build/analyze/test shortcuts using the `invoke` python package.
+The docker image includes all `apt` and `pip` packages needed as well as all of the `musl` cross-compilation toolchains.
+
+To build the docker image and install invoke:
+
+```bash
+pip install invoke
+inv docker --build
 ```
 
----
+From the project root directory start the docker container CLI:
+```bash
+inv docker
+```
 
-## Configuration
+From here, run `inv --list` to see available tasks and then `inv <task name> --help` to see task-specific help information. 
 
-All configuration is via command-line arguments. See above for details.
+Examples:
 
----
+```bash
+# Run lizard, clang-format, yamllint, and cmake-format on the repository's contents 
+inv lint
 
-## Advanced
+# List available build targets
+inv build --list-targets
 
-- **Cross-compilation:** See tasks.py for toolchain information all toolchains are Bootlin Linux toolchains.
-- **Docker:** Build and run in Docker using `invoke docker`.
-- **Packaging:** Create distributable archives with:
-  ```sh
-  invoke package
-  ```
+# Build a release version of the proxy for arm64
+inv build --target linux-arm64-musl --release
+
+# Run CodeChecker on a target that has already been built
+inv analyze --target linux-arm64-musl --release
+
+# Test a target that has already been built
+inv test --target linux-arm64-musl --release
+```
 
 ---
 
 ## CI/CD
 
-GitHub Actions workflow is provided in pipeline.yaml for linting, building, analyzing, testing, and packaging across multiple targets.
+GitHub Actions workflow is provided in `.github/workflows/pipeline.yaml` for linting, building, analyzing, testing, and packaging across supported targets.
 
 ---
 
@@ -188,14 +119,6 @@ Kevin McKenzie
 
 ---
 
-## Troubleshooting
-
-- If you see permission errors on ports <1024, run as root or use higher ports.
-- For IPv6, ensure your system supports IPv6 and the addresses are valid.
-- For debugging, use the `Debug` build type and check logs.
-
----
-
 ## Contributing
 
 Pull requests and issues are welcome! Please ensure `invoke lint`, `invoke build-all`,  `invoke analyze-all`, and `invoke test-all` run/pass without error before submitting code.
@@ -204,4 +127,4 @@ Pull requests and issues are welcome! Please ensure `invoke lint`, `invoke build
 
 ## Contact
 
-For questions or support, open an issue on GitHub.
+For questions or support, open an issue on GitHub or contact kbmck [at] protonmail.com.
