@@ -227,6 +227,11 @@ def test_ipv6(single_proxy_ipv6_fs, python_http_server_ipv6_fs):
     proxy: Proxy = single_proxy_ipv6_fs[0]
     server: HTTPServer = python_http_server_ipv6_fs
 
+    bin_path = os.getenv("BIN_PATH")
+
+    if any(x in bin_path for x in ("local", "valgrind", "asan")):
+        pytest.skip("Skipping IPv6 test on glibc builds due to CI limitations.")
+
     url_v6 = f"http://[::1]:{proxy.in_port}"
     via = requests.get(url_v6, timeout=SMALL_TIMEOUT)
 
