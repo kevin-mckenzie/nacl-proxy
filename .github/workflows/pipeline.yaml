@@ -37,10 +37,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: setup
-        run: |
-          git submodule update --init --recursive
-
       - name: build-${{ matrix.target }}-${{ matrix.build_type }}
         run: |
           if [ "${{ matrix.build_type }}" = "release" ]; then
