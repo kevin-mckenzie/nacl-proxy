@@ -23,6 +23,13 @@ typedef struct {
 } net_t;
 
 /**
+ * @brief Free cached server address info.
+ *
+ * Call this function at program exit to avoid memory leaks.
+ */
+void network_free_cached_address(void);
+
+/**
  * @brief Sets a socket to non-blocking mode.
  *
  * Uses fcntl() to set the O_NONBLOCK flag on the given socket file descriptor.

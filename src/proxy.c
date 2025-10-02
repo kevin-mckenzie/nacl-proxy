@@ -112,6 +112,7 @@ CLEANUP:
         close(server_fd);
     }
     event_teardown((void (*)(void *))free_connection); // NOLINT (clang-diagnostic-cast-function-type-strict)
+    network_free_cached_address();
     return err;
 }
 

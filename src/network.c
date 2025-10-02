@@ -28,6 +28,18 @@ static struct addrinfo *gp_cached_server_address = NULL; // NOLINT (cppcoreguide
 static struct timespec gts_last_resolution = {0, 0};     // NOLINT (cppcoreguidelines-avoid-non-const-global-variables)
 
 /**
+ * @brief Free cached server address info.
+ *
+ * Call this function at program exit to avoid memory leaks.
+ */
+void network_free_cached_address(void) {
+    if (NULL != gp_cached_server_address) {
+        freeaddrinfo(gp_cached_server_address);
+        gp_cached_server_address = NULL;
+    }
+}
+
+/**
  * @brief Set a socket to non-blocking mode.
  *
  * Uses fcntl() to set O_NONBLOCK. This is required for event-driven IO.
