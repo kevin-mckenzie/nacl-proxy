@@ -5,7 +5,7 @@ import invoke
 # pylint: disable=C0116,C0301
 
 DOCKER_IMAGE = "ghcr.io/kevin-mckenzie/n-proxy:latest"
-PROJECT_NAME = "n-proxy"
+PROJECT_NAME = "nacl-proxy"
 VERSION = "1.0.0"
 
 TOOLCHAIN_INSTALL_DIR = "/opt/cross"
@@ -21,7 +21,7 @@ TARGETS = {
     },
     "valgrind": {
         "test": True,
-        "emulator": "valgrind --leak-check=full --show-leak-kinds=all",
+        "emulator": "valgrind --leak-check=full --show-leak-kinds=all --exit-on-first-error=yes --error-exitcode=1 --errors-for-leak-kinds=all",
         "linking": "dynamic",
     },
     "linux-x86_64-musl": {
