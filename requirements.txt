@@ -8,4 +8,4 @@ yamllint
 invoke
 pytest
 ruff
-codechecker
+codechecker<=6.25.1
