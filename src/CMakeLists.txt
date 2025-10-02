@@ -1,7 +1,7 @@
 set(TARGET proxy-${BUILD_NAME})
 
 include_directories(include)
-add_subdirectory(${CMAKE_SOURCE_DIR}/src/nn)
+add_subdirectory(${CMAKE_SOURCE_DIR}/src/netnacl)
 
 add_executable(${TARGET} main.c buf.c event.c network.c proxy.c)
 add_compile_options(${TARGET} PRIVATE -Wall -Wpedantic -Werror)

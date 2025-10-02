@@ -87,7 +87,7 @@ def single_proxy_unencrypted_fs():
 
     for proxy in proxies:
         proxy.proc.terminate()
-    time.sleep(0.1)
+        proxy.proc.wait()
     for proxy in proxies:
         assert 0 == proxy.proc.returncode
 
@@ -107,7 +107,9 @@ def single_proxy_ipv6_fs():
 
     for proxy in proxies:
         proxy.proc.terminate()
-    time.sleep(0.1)
+        proxy.proc.wait()
+    for proxy in proxies:
+        assert 0 == proxy.proc.returncode
 
 
 @pytest.fixture(scope="function")
@@ -140,6 +142,9 @@ def triple_proxy_unencrypted_fs():
 
     for proxy in proxies:
         proxy.proc.terminate()
+        proxy.proc.wait()
+    for proxy in proxies:
+        assert 0 == proxy.proc.returncode
 
 
 @pytest.fixture(scope="function")
@@ -172,6 +177,9 @@ def triple_proxy_encrypted_fs():
 
     for proxy in proxies:
         proxy.proc.terminate()
+        proxy.proc.wait()
+    for proxy in proxies:
+        assert 0 == proxy.proc.returncode
 
 
 @pytest.fixture(scope="function")
@@ -193,6 +201,9 @@ def quad_proxy_encrypted_fs():
 
     for proxy in proxies:
         proxy.proc.terminate()
+        proxy.proc.wait()
+    for proxy in proxies:
+        assert 0 == proxy.proc.returncode
 
 
 @pytest.fixture(scope="module")
@@ -208,6 +219,7 @@ def python_http_server_ms():
     yield server
 
     server.proc.terminate()
+    server.proc.wait()
 
 
 @pytest.fixture(scope="function")
@@ -223,3 +235,4 @@ def python_http_server_ipv6_fs():
     yield server
 
     server.proc.terminate()
+    server.proc.wait()

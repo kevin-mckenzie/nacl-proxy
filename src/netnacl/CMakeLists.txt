@@ -7,14 +7,11 @@ if(NOT LINK_TYPE)
   set(LINK_TYPE STATIC)
 endif()
 
-if (NOT CMAKE_BUILD_TYPE)
+if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE "Debug")
 endif()
 
-add_library(${TARGET} ${LINK_TYPE}
-  src/netnacl.c
-  src/tweetnacl.c
-)
+add_library(${TARGET} ${LINK_TYPE} src/netnacl.c src/tweetnacl.c)
 
 target_include_directories(${TARGET} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 

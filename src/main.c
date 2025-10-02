@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "errors.h"
 #include "proxy.h"
 #include "utils.h"
 
@@ -24,7 +25,7 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
 
-    if (0 != proxy_run(&config)) {
+    if (PROXY_ERR == proxy_run(&config)) {
         // Proxy failed to start or encountered a fatal error
         return EXIT_FAILURE;
     }
