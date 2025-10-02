@@ -84,8 +84,8 @@ jobs:
       - name: compress
         run: tar cf n-proxy.tar.gz dist/bin
 
-      # - name: upload
-      #   uses: actions/upload-artifact@v4
-      #   with:
-      #     name: n-proxy.tar.gz
-      #     path: n-proxy.tar.gz
+      - name: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: nacl-proxy.tar.gz
+          path: nacl-proxy.tar.gz

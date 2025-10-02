@@ -1,24 +1,16 @@
 set(TARGET proxy-${BUILD_NAME})
 
 include_directories(include)
-include_directories(${CMAKE_SOURCE_DIR}/external)
+add_subdirectory(${CMAKE_SOURCE_DIR}/src/netnacl)
 
-add_executable(
-  ${TARGET}
-  main.c
-  buf.c
-  event.c
-  network.c
-  proxy.c
-  netnacl.c
-  ${CMAKE_SOURCE_DIR}/external/tweetnacl.c)
-target_compile_options(${TARGET} PRIVATE -Wall -Wpedantic -Werror)
+add_executable(${TARGET} main.c buf.c event.c network.c proxy.c)
+add_compile_options(${TARGET} PRIVATE -Wall -Wpedantic -Werror)
 
 target_compile_definitions(${TARGET} PRIVATE _POSIX_C_SOURCE=200809L)
 
 if(COVERAGE)
   target_link_options(${TARGET} PRIVATE --coverage)
-  target_compile_options(${TARGET} PRIVATE --coverage)
+  add_compile_options(${TARGET} PRIVATE --coverage)
 endif()
 
 if(ASAN)
@@ -40,5 +32,7 @@ if(${CMAKE_BUILD_TYPE} STREQUAL "MinSizeRel")
                                            -fdata-sections)
   target_link_options(${TARGET} PRIVATE -s -Wl,--gc-sections)
 endif()
+
+target_link_libraries(${TARGET} PRIVATE netnacl)
 
 install(TARGETS ${TARGET} DESTINATION ${CMAKE_SOURCE_DIR}/dist/bin)

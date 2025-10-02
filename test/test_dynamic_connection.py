@@ -33,13 +33,17 @@ UPSTREAM_ADDR = ("127.0.0.1", 8000)
 SMALL_TIMEOUT = 3
 LARGE_TIMEOUT = 10
 
+
 def _recv_exact(sock, n):
-    buf = bytearray(n); view = memoryview(buf); got = 0
+    buf = bytearray(n)
+    view = memoryview(buf)
+    got = 0
     while got < n:
         r = sock.recv_into(view[got:], n - got)
         assert r > 0, "peer closed early"
         got += r
     return bytes(buf)
+
 
 def _connect_through_proxy(proxy):
     # Upstream listener on fixed port
@@ -54,6 +58,7 @@ def _connect_through_proxy(proxy):
     c.settimeout(LARGE_TIMEOUT)
     s.settimeout(LARGE_TIMEOUT)
     return c, s
+
 
 @pytest.mark.parametrize(
     "proxy_configuration",
@@ -76,7 +81,11 @@ def test_server_sends_first_banner_basic(proxy_configuration):
 
     with closing(socket.create_server(UPSTREAM_ADDR, backlog=16)) as listen:
         listen.settimeout(SMALL_TIMEOUT)
-        with closing(socket.create_connection((proxy.in_addr, proxy.in_port), timeout=SMALL_TIMEOUT)) as client:
+        with closing(
+            socket.create_connection(
+                (proxy.in_addr, proxy.in_port), timeout=SMALL_TIMEOUT
+            )
+        ) as client:
             server, _ = listen.accept()
             with closing(server):
                 client.settimeout(LARGE_TIMEOUT)
@@ -93,6 +102,7 @@ def test_server_sends_first_banner_basic(proxy_configuration):
                 assert _recv_exact(server, len(payload)) == payload
                 server.sendall(payload)
                 assert _recv_exact(client, len(payload)) == payload
+
 
 @pytest.mark.parametrize(
     "proxy_configuration",
@@ -118,9 +128,12 @@ def test_client_to_server_roundtrip_sizes(proxy_configuration, n):
         blob = os.urandom(n)
         client.sendall(blob)
         # server reads then echoes
-        got = _recv_exact(server, n); assert got == blob
+        got = _recv_exact(server, n)
+        assert got == blob
         server.sendall(got)
-        back = _recv_exact(client, n); assert back == blob
+        back = _recv_exact(client, n)
+        assert back == blob
+
 
 @pytest.mark.parametrize(
     "proxy_configuration",

@@ -189,6 +189,7 @@ def package(ctx: invoke.context):
     ctx.run(f"tar -czf dist/{PROJECT_NAME}_{VERSION}_pkg.tar.gz dist/bin")
     ctx.run(f"zip -r dist/{PROJECT_NAME}_{VERSION}_docs.zip dist/docs")
 
+
 @invoke.task
 def build_all(ctx):
     """Build all targets defined in the TARGETS dictionary."""
@@ -196,12 +197,14 @@ def build_all(ctx):
         build(ctx, target=target, release=False)
         build(ctx, target=target, release=True)
 
+
 @invoke.task
 def analyze_all(ctx):
     """Analyze all targets defined in the TARGETS dictionary."""
     for target in TARGETS:
         analyze(ctx, target=target, release=False)
         analyze(ctx, target=target, release=True)
+
 
 @invoke.task
 def test_all(ctx):
@@ -211,15 +214,14 @@ def test_all(ctx):
             test(ctx, target=target, release=False)
             test(ctx, target=target, release=True)
 
+
 @invoke.task
 def clean(ctx: invoke.context):
     ctx.run("rm -fdr build-* dist")
 
 
 @invoke.task
-def docker(
-    ctx: invoke.context, build: bool = False, push: bool = False
-):  # pylint: disable=W0621
+def docker(ctx: invoke.context, build: bool = False, push: bool = False):  # pylint: disable=W0621
     """Build, push, or run an interactive shell in the docker image."""
     if not build and not push:
         ctx.run(

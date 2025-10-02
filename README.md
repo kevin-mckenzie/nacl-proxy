@@ -23,9 +23,9 @@ A lightweight, event-driven TCP proxy server with optional inter-proxy encryptio
 ### Options:
 - `-i`: Encrypt client-side communications.
 - `-o`: Encrypt server-side communications.
-- `<bind address>`: Numeric local IPv4/IPv6 address to which the proxy will bind.
+- `<bind address>`: Local IPv4/IPv6 address to which the proxy will bind.
 - `<bind port>`: The TCP port on `<bind address>` to which the proxy will bind. Must be between 1 and 65535.
-- `<server address>`: Numeric IPv4/IPv6 address or domain name of the server to which the proxy will connect upon receiving a client connection.
+- `<server address>`: IPv4/IPv6 address or domain name of the server to which the proxy will connect upon receiving a client connection.
 - `<server port>`: The TCP port on `<server address>` to which the proxy will attempt to connect. Must be between 1 and 65535.
 
 
@@ -44,7 +44,7 @@ user@dev:~$ ./proxy-linux-x86_64-musl-static-minsizerel -io ::1 7998 ::1 7999
 user@dev:~$ ./proxy-linux-x86_64-musl-static-minsizerel -o ::1 7997 ::1 7998
 
 # Download the file
-user@dev:~$ wget http://localhost:7997/testfile
+user@dev:~$ wget http://[::1]:7997/testfile
 
 Connecting to [::1]:7997... connected.
 HTTP request sent, awaiting response... 200 OK
@@ -109,7 +109,7 @@ GitHub Actions workflow is provided in `.github/workflows/pipeline.yaml` for lin
 
 ## License
 
-MIT License. See LICENSE.
+GPL 3 License. See LICENSE.
 
 ---
 

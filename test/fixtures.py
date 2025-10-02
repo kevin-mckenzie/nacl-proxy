@@ -95,6 +95,7 @@ def proxy_configuration(request):
     # request.param is a fixture name; resolve it to the actual proxy chain object
     return request.getfixturevalue(request.param)
 
+
 @pytest.fixture(scope="function")
 def single_proxy_ipv6_fs():
     port = free_port()
@@ -206,6 +207,7 @@ def python_http_server_ms():
 
     server.proc.terminate()
 
+
 @pytest.fixture(scope="function")
 def python_http_server_ipv6_fs():
     run_path = ["python3", "-m", "http.server", "-d", "/tmp", "--bind", "::1"]
@@ -219,4 +221,3 @@ def python_http_server_ipv6_fs():
     yield server
 
     server.proc.terminate()
-

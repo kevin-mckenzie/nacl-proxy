@@ -167,7 +167,9 @@ def test_concurrent_clients(proxy_configuration, python_http_server_ms, tmp_path
     indirect=True,
 )
 def test_client_abort_then_next_ok(
-    proxy_configuration, python_http_server_ms, tmp_path #pylint: disable=W0613
+    proxy_configuration,
+    python_http_server_ms,
+    tmp_path,  # pylint: disable=W0613
 ):
     """
     Test that aborting a client download does not affect subsequent downloads through the proxy.
@@ -217,9 +219,7 @@ def test_hostname_resolution_to_proxy(proxy_configuration, python_http_server_ms
     assert direct.content == via.content
 
 
-def test_ipv6(
-    single_proxy_ipv6_fs, python_http_server_ipv6_fs
-):
+def test_ipv6(single_proxy_ipv6_fs, python_http_server_ipv6_fs):
     """
     Test proxying HTTP traffic over IPv6.
     Ensures the proxy can forward requests and responses using IPv6 addresses.
@@ -227,12 +227,12 @@ def test_ipv6(
     proxy: Proxy = single_proxy_ipv6_fs[0]
     server: HTTPServer = python_http_server_ipv6_fs
 
-
     url_v6 = f"http://[::1]:{proxy.in_port}"
     via = requests.get(url_v6, timeout=SMALL_TIMEOUT)
 
-
-    direct = requests.get(f"http://[{server.addr}]:{server.port}", timeout=SMALL_TIMEOUT)
+    direct = requests.get(
+        f"http://[{server.addr}]:{server.port}", timeout=SMALL_TIMEOUT
+    )
     assert direct.status_code // 100 == 2
     assert via.status_code // 100 == 2
     assert direct.content == via.content
