@@ -1,3 +1,0 @@
-[submodule "src/netnacl"]
-	path = src/netnacl
-	url = https://github.com/kevin-mckenzie/netnacl.git
