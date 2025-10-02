@@ -168,6 +168,10 @@ int network_get_listen_socket(const char *addr_str, const char *port_str) {
         server_fd = -1;
     }
 
+    if (NULL != p_gai_result) {
+        freeaddrinfo(p_gai_result);
+    }
+
     return server_fd;
 }
 
