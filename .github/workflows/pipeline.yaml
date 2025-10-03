@@ -55,9 +55,9 @@ jobs:
       - name: test-${{ matrix.target }}-${{ matrix.build_type }}
         run: |
           if [ "${{ matrix.build_type }}" = "release" ]; then
-            inv test --target ${{ matrix.target }} --release -k test_root_bytes_match
+            inv test --target ${{ matrix.target }} --release
           else
-            inv test --target ${{ matrix.target }} -k test_root_bytes_match
+            inv test --target ${{ matrix.target }}
           fi
 
       - name: upload
@@ -83,7 +83,7 @@ jobs:
 
       - name: create-release
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}   # gh reads GH_TOKEN
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
         run: |
           gh release create "$TAG" --generate-notes || true
