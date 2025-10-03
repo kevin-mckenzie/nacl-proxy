@@ -93,5 +93,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          apt install -y gh
           mv nacl-proxy.tar.gz "nacl-proxy-${GITHUB_REF_NAME}.tar.gz"
           gh release create "${GITHUB_REF_NAME}" nacl-proxy-${GITHUB_REF_NAME}.tar.gz --generate-notes
