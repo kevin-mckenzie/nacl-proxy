@@ -3,6 +3,7 @@ name: Multi-Arch-CI
 on:
   push:
     branches: [ main ]
+    tags: ['v*']
   pull_request:
     branches: [ main ]
 
