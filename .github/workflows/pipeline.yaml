@@ -66,26 +66,26 @@ jobs:
           name: ${{ matrix.target }}-${{ matrix.build_type }}
           path: dist/bin/*
 
-package-release:
-  runs-on: ubuntu-latest
-  if: startsWith(github.ref, 'refs/tags/')
-  permissions:
-    contents: write
-  steps:
-    - uses: actions/checkout@v4
+  package-release:
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
 
-    - uses: actions/download-artifact@v4
-      with:
-        path: dist/bin
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist/bin
 
-    - run: tar czf nacl-proxy.tar.gz dist/bin
-  
-    - name: setup-gh-cli
-      uses: actions/setup-gh-cli@v3
+      - run: tar czf nacl-proxy.tar.gz dist/bin
+    
+      - name: setup-gh-cli
+        uses: actions/setup-gh-cli@v3
 
-    - name: release
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: |
-        mv nacl-proxy.tar.gz "nacl-proxy-${GITHUB_REF_NAME}.tar.gz"
-        gh release create "${GITHUB_REF_NAME}" "nacl-proxy-${GITHUB_REF_NAME}.tar.gz" --generate-notes
+      - name: release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mv nacl-proxy.tar.gz "nacl-proxy-${GITHUB_REF_NAME}.tar.gz"
+          gh release create "${GITHUB_REF_NAME}" "nacl-proxy-${GITHUB_REF_NAME}.tar.gz" --generate-notes
