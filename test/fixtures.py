@@ -6,6 +6,8 @@ import socket
 
 import pytest
 
+# pylint: disable=C0116
+
 
 @dataclasses.dataclass
 class Proxy:
@@ -35,7 +37,28 @@ def free_port():
     return port
 
 
-def create_proxy(in_port, out_port, encrypt_in=False, encrypt_out=False) -> Proxy:
+def wait_for_proxy_exit(proxies: list[Proxy]):
+    for proxy in proxies:
+        time.sleep(0.1)
+        proxy.proc.terminate()
+    for proxy in proxies:
+        try:
+            proxy.proc.wait(timeout=5)
+            assert 0 == proxy.proc.returncode
+        except subprocess.TimeoutExpired:
+            proxy.proc.kill()
+            proxy.proc.wait(timeout=5)
+            assert False, f"Proxy process did not terminate in time: {time.monotonic()}"
+
+
+def create_proxy(
+    in_port,
+    out_port,
+    in_addr="127.0.0.1",
+    out_addr="127.0.0.1",
+    encrypt_in=False,
+    encrypt_out=False,
+) -> Proxy:
     bin_path = os.getenv("BIN_PATH")
     emulator_str = os.getenv("EMULATOR")
 
@@ -49,13 +72,13 @@ def create_proxy(in_port, out_port, encrypt_in=False, encrypt_out=False) -> Prox
     if encrypt_out:
         proc_args_list += ["-o"]
 
-    proc_args_list += ["127.0.0.1", str(in_port), "127.0.0.1", str(out_port)]
+    proc_args_list += [in_addr, str(in_port), out_addr, str(out_port)]
 
     proxy = Proxy(
         proc=subprocess.Popen(proc_args_list),
-        in_addr="127.0.0.1",
+        in_addr=in_addr,
         in_port=in_port,
-        out_addr="127.0.0.1",
+        out_addr=out_addr,
         out_port=out_port,
         encrypt_in=encrypt_in,
         encrypt_out=encrypt_out,
@@ -76,29 +99,40 @@ def single_proxy_unencrypted_fs():
 
     yield proxies
 
-    for proxy in proxies:
-        proxy.proc.terminate()
-    time.sleep(0.1)
-    for proxy in proxies:
-        assert 0 == proxy.proc.returncode
+    wait_for_proxy_exit(proxies)
+
+
+@pytest.fixture
+def proxy_configuration(request):
+    # request.param is a fixture name; resolve it to the actual proxy chain object
+    return request.getfixturevalue(request.param)
+
+
+@pytest.fixture(scope="function")
+def single_proxy_ipv6_fs():
+    port = free_port()
+    proxies = [create_proxy(port, 8000, in_addr="::1", out_addr="::1")]
+
+    yield proxies
+
+    wait_for_proxy_exit(proxies)
 
 
 @pytest.fixture(scope="function")
 def double_proxy_unencrypted_fs():
-    proxies = []
+    proxies: list[Proxy] = []
     port1, port2 = free_port(), free_port()
     proxies.append(create_proxy(port1, port2))
     proxies.append(create_proxy(port2, 8000))
 
     yield proxies
 
-    for proxy in proxies:
-        proxy.proc.terminate()
+    wait_for_proxy_exit(proxies)
 
 
 @pytest.fixture(scope="function")
 def triple_proxy_unencrypted_fs():
-    proxies = []
+    proxies: list[Proxy] = []
     port1, port2, port3 = (
         free_port(),
         free_port(),
@@ -111,26 +145,24 @@ def triple_proxy_unencrypted_fs():
 
     yield proxies
 
-    for proxy in proxies:
-        proxy.proc.terminate()
+    wait_for_proxy_exit(proxies)
 
 
 @pytest.fixture(scope="function")
 def double_proxy_encrypted_fs():
-    proxies = []
+    proxies: list[Proxy] = []
     port1, port2 = free_port(), free_port()
     proxies.append(create_proxy(port1, port2, encrypt_out=True))
     proxies.append(create_proxy(port2, 8000, encrypt_in=True))
 
     yield proxies
 
-    for proxy in proxies:
-        proxy.proc.terminate()
+    wait_for_proxy_exit(proxies)
 
 
 @pytest.fixture(scope="function")
 def triple_proxy_encrypted_fs():
-    proxies = []
+    proxies: list[Proxy] = []
     port1, port2, port3 = (
         free_port(),
         free_port(),
@@ -143,13 +175,12 @@ def triple_proxy_encrypted_fs():
 
     yield proxies
 
-    for proxy in proxies:
-        proxy.proc.terminate()
+    wait_for_proxy_exit(proxies)
 
 
 @pytest.fixture(scope="function")
 def quad_proxy_encrypted_fs():
-    proxies = []
+    proxies: list[Proxy] = []
     port1, port2, port3, port4 = (
         free_port(),
         free_port(),
@@ -164,12 +195,11 @@ def quad_proxy_encrypted_fs():
 
     yield proxies
 
-    for proxy in proxies:
-        proxy.proc.terminate()
+    wait_for_proxy_exit(proxies)
 
 
-@pytest.fixture(scope="function")
-def python_http_server_fs():
+@pytest.fixture(scope="module")
+def python_http_server_ms():
     run_path = ["python3", "-m", "http.server", "-d", "/tmp"]
 
     server = HTTPServer(
@@ -181,3 +211,20 @@ def python_http_server_fs():
     yield server
 
     server.proc.terminate()
+    server.proc.wait(timeout=5)
+
+
+@pytest.fixture(scope="function")
+def python_http_server_ipv6_fs():
+    run_path = ["python3", "-m", "http.server", "-d", "/tmp", "--bind", "::1"]
+
+    server = HTTPServer(
+        proc=subprocess.Popen(run_path),
+        addr="::1",
+        port=8000,
+    )
+    time.sleep(0.2)
+    yield server
+
+    server.proc.terminate()
+    server.proc.wait(timeout=5)

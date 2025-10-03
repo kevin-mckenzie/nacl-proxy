@@ -126,8 +126,9 @@ int event_run_loop(volatile int *p_run_flag, int poll_timeout) { // NOLINT (read
         if (-1 == poll_ct) {
             if (EINTR != errno) {
                 LOG(ERR, "poll");
+                return PROXY_ERR;
             }
-            return PROXY_ERR;
+            return PROXY_INTR;
         }
 
         if (0 < poll_ct) {

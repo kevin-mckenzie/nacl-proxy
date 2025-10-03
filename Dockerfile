@@ -15,7 +15,8 @@ RUN apt update && apt upgrade -y && \
         valgrind \
         clang \
         clang-tools \
-        cppcheck && \
+        cppcheck \
+        git && \
     apt clean && \
     rm -rf /var/lib/apt/lists/*
 
