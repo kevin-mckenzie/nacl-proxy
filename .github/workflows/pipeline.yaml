@@ -24,11 +24,9 @@ jobs:
 
     strategy:
       matrix:
-        target: [local, valgrind, asan, linux-x86_64-musl, linux-i686-musl, linux-arm-musl, linux-arm64-musl, linux-mips-musl]
+        target: [local, asan, linux-x86_64-musl, linux-i686-musl, linux-arm-musl, linux-arm64-musl, linux-mips-musl]
         build_type: [release, debug]
         exclude:
-          - target: valgrind
-            build_type: release
           - target: asan
             build_type: release
           - target: local
@@ -89,3 +87,11 @@ jobs:
         with:
           name: nacl-proxy.tar.gz
           path: nacl-proxy.tar.gz
+
+      - name: release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mv nacl-proxy.tar.gz "nacl-proxy-${GITHUB_REF_NAME}.tar.gz"
+          gh release create "${GITHUB_REF_NAME}" nacl-proxy-${GITHUB_REF_NAME}.tar.gz --generate-notes

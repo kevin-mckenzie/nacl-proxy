@@ -37,6 +37,20 @@ def free_port():
     return port
 
 
+def wait_for_proxy_exit(proxies: list[Proxy]):
+    for proxy in proxies:
+        time.sleep(0.1)
+        proxy.proc.terminate()
+    for proxy in proxies:
+        try:
+            proxy.proc.wait(timeout=5)
+            assert 0 == proxy.proc.returncode
+        except subprocess.TimeoutExpired:
+            proxy.proc.kill()
+            proxy.proc.wait(timeout=5)
+            assert False, f"Proxy process did not terminate in time: {time.monotonic()}"
+
+
 def create_proxy(
     in_port,
     out_port,
@@ -85,11 +99,7 @@ def single_proxy_unencrypted_fs():
 
     yield proxies
 
-    for proxy in proxies:
-        proxy.proc.terminate()
-        proxy.proc.wait()
-    for proxy in proxies:
-        assert 0 == proxy.proc.returncode
+    wait_for_proxy_exit(proxies)
 
 
 @pytest.fixture
@@ -105,29 +115,24 @@ def single_proxy_ipv6_fs():
 
     yield proxies
 
-    for proxy in proxies:
-        proxy.proc.terminate()
-        proxy.proc.wait()
-    for proxy in proxies:
-        assert 0 == proxy.proc.returncode
+    wait_for_proxy_exit(proxies)
 
 
 @pytest.fixture(scope="function")
 def double_proxy_unencrypted_fs():
-    proxies = []
+    proxies: list[Proxy] = []
     port1, port2 = free_port(), free_port()
     proxies.append(create_proxy(port1, port2))
     proxies.append(create_proxy(port2, 8000))
 
     yield proxies
 
-    for proxy in proxies:
-        proxy.proc.terminate()
+    wait_for_proxy_exit(proxies)
 
 
 @pytest.fixture(scope="function")
 def triple_proxy_unencrypted_fs():
-    proxies = []
+    proxies: list[Proxy] = []
     port1, port2, port3 = (
         free_port(),
         free_port(),
@@ -140,29 +145,24 @@ def triple_proxy_unencrypted_fs():
 
     yield proxies
 
-    for proxy in proxies:
-        proxy.proc.terminate()
-        proxy.proc.wait()
-    for proxy in proxies:
-        assert 0 == proxy.proc.returncode
+    wait_for_proxy_exit(proxies)
 
 
 @pytest.fixture(scope="function")
 def double_proxy_encrypted_fs():
-    proxies = []
+    proxies: list[Proxy] = []
     port1, port2 = free_port(), free_port()
     proxies.append(create_proxy(port1, port2, encrypt_out=True))
     proxies.append(create_proxy(port2, 8000, encrypt_in=True))
 
     yield proxies
 
-    for proxy in proxies:
-        proxy.proc.terminate()
+    wait_for_proxy_exit(proxies)
 
 
 @pytest.fixture(scope="function")
 def triple_proxy_encrypted_fs():
-    proxies = []
+    proxies: list[Proxy] = []
     port1, port2, port3 = (
         free_port(),
         free_port(),
@@ -175,16 +175,12 @@ def triple_proxy_encrypted_fs():
 
     yield proxies
 
-    for proxy in proxies:
-        proxy.proc.terminate()
-        proxy.proc.wait()
-    for proxy in proxies:
-        assert 0 == proxy.proc.returncode
+    wait_for_proxy_exit(proxies)
 
 
 @pytest.fixture(scope="function")
 def quad_proxy_encrypted_fs():
-    proxies = []
+    proxies: list[Proxy] = []
     port1, port2, port3, port4 = (
         free_port(),
         free_port(),
@@ -199,11 +195,7 @@ def quad_proxy_encrypted_fs():
 
     yield proxies
 
-    for proxy in proxies:
-        proxy.proc.terminate()
-        proxy.proc.wait()
-    for proxy in proxies:
-        assert 0 == proxy.proc.returncode
+    wait_for_proxy_exit(proxies)
 
 
 @pytest.fixture(scope="module")
@@ -219,7 +211,7 @@ def python_http_server_ms():
     yield server
 
     server.proc.terminate()
-    server.proc.wait()
+    server.proc.wait(timeout=5)
 
 
 @pytest.fixture(scope="function")
@@ -235,4 +227,4 @@ def python_http_server_ipv6_fs():
     yield server
 
     server.proc.terminate()
-    server.proc.wait()
+    server.proc.wait(timeout=5)

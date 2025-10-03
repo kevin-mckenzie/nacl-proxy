@@ -113,6 +113,7 @@ CLEANUP:
     }
     event_teardown((void (*)(void *))free_connection); // NOLINT (clang-diagnostic-cast-function-type-strict)
     network_free_cached_address();
+    LOG(DBG, "EXIT: %d", getpid());
     return err;
 }
 
@@ -515,7 +516,7 @@ static int handle_send(conn_t *p_conn, enum ProxySide side) {
     if (0 == err) {
         // If peer is disconnected, close both ends after sending buffered data.
         if (-1 == p_mod_net->sock_fd) {
-            LOG(INF, "After completing pending send, closing [%d] due to prior peer disconnect", p_mod_net->sock_fd);
+            // LOG(INF, "After completing pending send, closing [%d] due to prior peer disconnect", p_mod_net->sock_fd);
             close_connection(&p_conn);
             return PROXY_DISCONNECT;
         }

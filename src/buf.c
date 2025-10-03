@@ -39,10 +39,8 @@ int buf_send(net_t *p_net, buf_t *p_buf, int flags) {
     while (p_buf->read_pos < p_buf->size) {
         ssize_t sent = 0;
         if (p_net->b_encrypted) {
-            LOG(DBG, "sending encrypted data");
             sent = netnacl_send(p_net->netnacl, p_buf->data + p_buf->read_pos, p_buf->size - p_buf->read_pos, flags);
         } else {
-            LOG(DBG, "sending unencrypted data");
             sent = send(p_net->sock_fd, p_buf->data + p_buf->read_pos, p_buf->size - p_buf->read_pos, flags);
         }
 
@@ -59,7 +57,6 @@ int buf_send(net_t *p_net, buf_t *p_buf, int flags) {
             LOG(ERR, "send");
             return PROXY_ERR;
         }
-
         p_buf->read_pos += (size_t)sent;
     }
     LOG(IO, "sent %zu / %zu bytes on %d", p_buf->read_pos, p_buf->size, p_net->sock_fd);
