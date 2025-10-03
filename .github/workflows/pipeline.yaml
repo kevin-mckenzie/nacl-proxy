@@ -77,15 +77,15 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: dist/bin
+          name: bin
 
-      - run: tar czf nacl-proxy.tar.gz dist/bin
-    
-      - name: setup-gh-cli
-        uses: actions/setup-gh-cli@v3
+      - run: tar -C dist -czf nacl-proxy-${GITHUB_REF_NAME}.tar.gz bin
 
-      - name: release
+      - name: Create/Update release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}   # gh reads GH_TOKEN
+          TAG: ${{ github.ref_name }}
         run: |
-          mv nacl-proxy.tar.gz "nacl-proxy-${GITHUB_REF_NAME}.tar.gz"
-          gh release create "${GITHUB_REF_NAME}" "nacl-proxy-${GITHUB_REF_NAME}.tar.gz" --generate-notes
+          gh release create "$TAG" --generate-notes || true
+          gh release upload "$TAG" nacl-proxy.tar.gz --clobber
+            gh release create "${GITHUB_REF_NAME}" "nacl-proxy-${GITHUB_REF_NAME}.tar.gz" --generate-notes
